@@ -1,0 +1,28 @@
+.badge-tipe {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-rutin { background: #EEEDFE; color: #3C3489; }
+.badge-nonrutin { background: #FAECE7; color: #712B13; }
+
+.jr-form label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #5F5E5A; }
+.jr-form select, .jr-form input[type=time], .jr-form input[type=text] {
+  width: 100%; padding: 10px 12px; border: 0.5px solid #d3d1c7; border-radius: 8px; font-size: 14px;
+}
+.jr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.jr-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.jr-table th, .jr-table td { padding: 12px 14px; text-align: left; border-bottom: 0.5px solid #eee; }
+.jr-table th { background: #faf9f7; font-size: 12px; text-transform: uppercase; color: #888; }
+.jr-table tr.inactive { opacity: 0.55; }
+.jr-btn {
+  padding: 6px 10px; border: 1px solid #ddd; background: #fff; border-radius: 6px;
+  cursor: pointer; font-size: 12px; margin-right: 4px;
+}
+.jr-btn.danger { color: #A32D2D; border-color: #F0B8B8; }

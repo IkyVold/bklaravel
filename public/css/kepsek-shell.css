@@ -1,0 +1,11 @@
+/* Minimal shell — jangan override desain React di kepsekDashboard.css */
+body { margin: 0; padding: 0; }
+/* Pastikan main dari layout.app tidak menambah padding untuk kepsek */
+body:has(.kepsek-page) > main,
+main:has(.kepsek-page) {
+  padding: 0 !important;
+  margin: 0 !important;
+  max-width: none !important;
+}
+/* Hapus app-nav jika masih ter-render secara tidak sengaja */
+body:has(.kepsek-page) .app-nav { display: none !important; }

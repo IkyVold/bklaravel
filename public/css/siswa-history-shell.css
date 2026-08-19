@@ -1,0 +1,36 @@
+/* Hilangkan bentrok layout.app + app-extra dengan halaman History React */
+body:has(.history-page) > main,
+main:has(.history-page) {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+body:has(.history-page) .siswa-top-nav,
+body:has(.history-page) .siswa-nav,
+body:has(.history-page) nav.siswa-navbar {
+  display: none !important;
+}
+/* app-extra .main-content max-width */
+.history-page .main-content {
+  max-width: none !important;
+  width: auto !important;
+}
+body:has(.jadwal-page) > main,
+main:has(.jadwal-page) {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Pastikan kartu tidak ikut style link browser */
+.history-page a.history-card {
+  display: block;
+  text-decoration: none !important;
+  color: inherit !important;
+  cursor: pointer;
+}
+.history-page a.history-card:hover {
+  text-decoration: none !important;
+  color: inherit !important;
+}

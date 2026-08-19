@@ -1,0 +1,77 @@
+/* Override global app-extra / layout agar layout React Guru BK penuh */
+body:has(.guru-bk-page) {
+  margin: 0 !important;
+  background: #F1EFE8 !important;
+}
+body:has(.guru-bk-page) > main,
+main:has(.guru-bk-page) {
+  max-width: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+body:has(.guru-bk-page) .app-nav {
+  display: none !important;
+}
+/* app-extra.css memakai .main-content { max-width:1100px } — harus dilawan */
+.guru-bk-page .guru-main, .guru-bk-page .main-content {
+  max-width: none !important;
+  margin: 0 !important;
+  width: auto !important;
+  flex: 1 !important;
+  padding: 28px 32px 40px !important;
+  min-width: 0 !important;
+}
+.guru-bk-page .container {
+  display: flex !important;
+  max-width: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: calc(100vh - 84px) !important;
+  align-items: flex-start !important;
+}
+.guru-bk-page .sidebar {
+  width: 246px !important;
+  flex-shrink: 0 !important;
+}
+.guru-bk-page .header {
+  width: 100% !important;
+}
+
+
+/* Tab Konseling / Daftar Siswa */
+.guru-bk-page .content-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e8e6e0;
+}
+.guru-bk-page .content-tabs a {
+  padding: 11px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  font-family: Inter, "Segoe UI", sans-serif;
+  border: none;
+  background: transparent;
+  color: #5F5E5A;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.18s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+.guru-bk-page .content-tabs a:hover {
+  color: #3C3489;
+  background: #F1EFE8;
+}
+.guru-bk-page .content-tabs a.active {
+  color: #3C3489;
+  border-bottom-color: #534AB7;
+  background: #EEEDFE;
+}

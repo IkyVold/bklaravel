@@ -1,0 +1,10 @@
+// ============================================================
+// TAMBAHKAN 4 BARIS ini di dalam group:
+//   Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(...)
+// Letakkan setelah route put guru/kepsek yang sudah ada.
+// ============================================================
+
+    Route::post('/guru/{id}/deactivate', [AkunController::class, 'guruDeactivate'])->name('guru.deactivate');
+    Route::post('/guru/{id}/activate', [AkunController::class, 'guruActivate'])->name('guru.activate');
+    Route::post('/kepsek/{id}/deactivate', [AkunController::class, 'kepsekDeactivate'])->name('kepsek.deactivate');
+    Route::post('/kepsek/{id}/activate', [AkunController::class, 'kepsekActivate'])->name('kepsek.activate');
