@@ -4,9 +4,12 @@ namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Sanctum\HasApiTokens;
 
 class Siswa extends Authenticatable
 {
+    use HasApiTokens;
+
     protected $table = 'siswa';
 
     protected $fillable = [
@@ -43,14 +46,20 @@ class Siswa extends Authenticatable
         return $this->hasMany(RiwayatKelas::class, 'nis', 'nis');
     }
 
-    /** Password di DB = MD5 (sistem lama) */
+    /**
+     * Verifikasi password: dukung bcrypt (baru) + MD5 (legacy).
+     * Jika MD5 cocok, otomatis upgrade ke bcrypt.
+     */
     public function verifyPassword(string $plain): bool
     {
-        if ($this->password === md5($plain)) {
-            return true;
-        }
         if (is_string($this->password) && str_starts_with($this->password, '$2y$')) {
             return password_verify($plain, $this->password);
+        }
+        if ($this->password === md5($plain)) {
+            // Upgrade silent ke bcrypt
+            $this->password = $plain; // trigger setPasswordAttribute
+            $this->save();
+            return true;
         }
         return false;
     }
@@ -60,8 +69,9 @@ class Siswa extends Authenticatable
         if ($value === null || $value === '') {
             return;
         }
+        // Selalu simpan bcrypt untuk password baru
         if (!str_starts_with((string) $value, '$2y$')) {
-            $this->attributes['password'] = md5($value);
+            $this->attributes['password'] = password_hash($value, PASSWORD_BCRYPT);
         } else {
             $this->attributes['password'] = $value;
         }

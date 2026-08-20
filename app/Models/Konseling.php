@@ -19,7 +19,7 @@ class Konseling extends Model
         'laporan_tanggal', 'laporan_waktu', 'laporan_dibuat_oleh',
         'laporan_kesimpulan', 'laporan_rekomendasi',
         'laporan_status_penanganan', 'laporan_catatan_tambahan',
-        'laporan_created_at', 'input_manual', 'catatan_walkin', 'created_at',
+        'laporan_created_at', 'input_manual', 'catatan_walkin', 'chat_session_id', 'created_at',
     ];
 
     protected $casts = [

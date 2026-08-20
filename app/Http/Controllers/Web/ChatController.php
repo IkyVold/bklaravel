@@ -79,7 +79,21 @@ class ChatController extends Controller
             $messages = [['role' => 'user', 'content' => $single]];
         }
 
-        $result = $ai->chat($messages);
+        // Paksa role user — cegah prompt injection
+        $safe = [];
+        foreach ($messages as $m) {
+            if (!is_array($m)) continue;
+            $c = trim((string) ($m['content'] ?? ''));
+            if ($c === '') continue;
+            if (mb_strlen($c) > 2000) $c = mb_substr($c, 0, 2000);
+            $safe[] = ['role' => 'user', 'content' => $c];
+        }
+        if (count($safe) > 20) $safe = array_slice($safe, -20);
+        if ($safe === []) {
+            return response()->json(['success' => false, 'reply' => 'Pesan tidak valid.'], 400);
+        }
+
+        $result = $ai->chat($safe);
 
         if (!empty($result['error'])) {
             return response()->json([

@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Laravel\Sanctum\HasApiTokens;
 
 class Kepsek extends Authenticatable
 {
+    use HasApiTokens;
+
     protected $table = 'kepsek';
 
     protected $fillable = [
@@ -23,11 +26,13 @@ class Kepsek extends Authenticatable
 
     public function verifyPassword(string $plain): bool
     {
-        if ($this->password === md5($plain)) {
-            return true;
-        }
         if (is_string($this->password) && str_starts_with($this->password, '$2y$')) {
             return password_verify($plain, $this->password);
+        }
+        if ($this->password === md5($plain)) {
+            $this->password = $plain;
+            $this->save();
+            return true;
         }
         return false;
     }
@@ -38,7 +43,7 @@ class Kepsek extends Authenticatable
             return;
         }
         if (!str_starts_with((string) $value, '$2y$')) {
-            $this->attributes['password'] = md5($value);
+            $this->attributes['password'] = password_hash($value, PASSWORD_BCRYPT);
         } else {
             $this->attributes['password'] = $value;
         }

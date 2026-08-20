@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\AuthorizesBk;
 use App\Models\Notifikasi;
 use App\Models\PushSubscription;
 use Illuminate\Http\JsonResponse;
@@ -10,13 +11,21 @@ use Illuminate\Http\Request;
 
 class NotifikasiController extends Controller
 {
-    public function list(Request $request): JsonResponse
+    use AuthorizesBk;
+
+    private function penerimaKey(Request $request): array
     {
         $user = $request->user();
-        $role = $user->currentAccessToken()?->abilities[0] ?? '';
+        $role = $this->currentRole($request) ?? '';
         $id = $role === 'siswa' ? ($user->nis ?? $user->id) : ($user->username ?? $user->id);
+        return [(string) $id, $role];
+    }
 
-        $rows = Notifikasi::where('penerima_id', (string) $id)
+    public function list(Request $request): JsonResponse
+    {
+        [$id, $role] = $this->penerimaKey($request);
+
+        $rows = Notifikasi::where('penerima_id', $id)
             ->where('penerima_role', $role)
             ->orderByDesc('created_at')
             ->limit(100)
@@ -27,7 +36,13 @@ class NotifikasiController extends Controller
 
     public function markRead(Request $request, int $id): JsonResponse
     {
-        $n = Notifikasi::find($id);
+        [$penerimaId, $role] = $this->penerimaKey($request);
+
+        $n = Notifikasi::where('id', $id)
+            ->where('penerima_id', $penerimaId)
+            ->where('penerima_role', $role)
+            ->first();
+
         if (!$n) {
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
@@ -38,11 +53,9 @@ class NotifikasiController extends Controller
 
     public function markAllRead(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $role = $user->currentAccessToken()?->abilities[0] ?? '';
-        $id = $role === 'siswa' ? ($user->nis ?? $user->id) : ($user->username ?? $user->id);
+        [$id, $role] = $this->penerimaKey($request);
 
-        Notifikasi::where('penerima_id', (string) $id)
+        Notifikasi::where('penerima_id', $id)
             ->where('penerima_role', $role)
             ->where('dibaca', false)
             ->update(['dibaca' => true]);
@@ -52,9 +65,7 @@ class NotifikasiController extends Controller
 
     public function subscribe(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $role = $user->currentAccessToken()?->abilities[0] ?? '';
-        $id = $role === 'siswa' ? ($user->nis ?? $user->id) : ($user->username ?? $user->id);
+        [$id, $role] = $this->penerimaKey($request);
 
         $endpoint = $request->input('endpoint');
         $keys = $request->input('keys', []);
@@ -64,7 +75,7 @@ class NotifikasiController extends Controller
         }
 
         PushSubscription::updateOrCreate(
-            ['user_id' => (string) $id, 'role' => $role, 'endpoint' => $endpoint],
+            ['user_id' => $id, 'role' => $role, 'endpoint' => $endpoint],
             ['p256dh' => $keys['p256dh'] ?? null, 'auth' => $keys['auth'] ?? null]
         );
 
