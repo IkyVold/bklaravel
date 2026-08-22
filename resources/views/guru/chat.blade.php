@@ -111,8 +111,18 @@ body { margin:0; background:#f5f5f0; }
     div.className = 'chat-msg ' + (isSent ? 'sent' : 'received');
     div.setAttribute('data-id', m.id);
     var who = isSent ? 'Saya' : (m.sender_name || peerName);
-    div.innerHTML = '<div class="msg-meta">'+who+' · '+(m.time||'')+'</div><div class="msg-bubble"></div>';
-    div.querySelector('.msg-bubble').textContent = m.message;
+    // Nama pengirim (sender_name) berasal dari data pengguna, jadi TIDAK
+    // boleh digabung sebagai string HTML lewat innerHTML — buat elemen DOM
+    // lalu isi dengan textContent agar tidak bisa dieksploitasi sebagai
+    // stored XSS.
+    var metaDiv = document.createElement('div');
+    metaDiv.className = 'msg-meta';
+    metaDiv.textContent = who + ' · ' + (m.time || '');
+    var bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'msg-bubble';
+    bubbleDiv.textContent = m.message;
+    div.appendChild(metaDiv);
+    div.appendChild(bubbleDiv);
     box.appendChild(div);
     if(m.id > lastId) lastId = m.id;
     scrollBottom();

@@ -56,9 +56,14 @@ class ProfileController extends Controller
             return back()->with('success', 'Foto profil berhasil diperbarui.');
         }
 
-        // Full form fallback (nama + password opsional)
+        // Full form fallback (password opsional).
+        // 'nama' SENGAJA tidak divalidasi/diterima di sini — mode edit_field
+        // di atas sudah membatasi field yang boleh diubah siswa, dan
+        // fallback ini dulu membuka celah karena masih mengizinkan 'nama'.
+        // Nama, NIS, dan kelas adalah data administratif sekolah; ubahnya
+        // hanya lewat manajemen data siswa (Web/SiswaController), bukan
+        // lewat profil sendiri.
         $data = $request->validate([
-            'nama' => 'sometimes|string|max:100',
             'jenis_kelamin' => 'nullable|string|max:20',
             'tanggal_lahir' => 'nullable|date',
             'alamat' => 'nullable|string',

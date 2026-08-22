@@ -38,9 +38,14 @@ class ProfileController extends Controller
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
 
-        // Siswa hanya boleh ubah field tertentu; staff boleh lebih
+        // Siswa hanya boleh ubah field tertentu; staff boleh lebih.
+        // 'nama' SENGAJA tidak termasuk di sini pada endpoint mana pun —
+        // nama, NIS, dan kelas adalah data administratif sekolah dan hanya
+        // boleh diubah lewat manajemen data siswa (Api/SiswaController),
+        // bukan lewat profil sendiri. Karena 'nama' tidak ada di daftar
+        // rules, Validator::validated() tidak akan pernah mengembalikannya
+        // walau client mengirimkannya di body request.
         $rules = [
-            'nama' => 'sometimes|string|max:100',
             'jenis_kelamin' => 'nullable|in:Laki-laki,Perempuan',
             'tanggal_lahir' => 'nullable|date',
             'alamat' => 'nullable|string|max:500',

@@ -8,14 +8,21 @@ use App\Models\GuruBk;
 use App\Models\Konseling;
 use App\Models\Notifikasi;
 use App\Models\Siswa;
+use App\Services\ScheduleService;
+use App\Support\KategoriKonseling;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class KonselingController extends Controller
 {
     use AuthorizesBk;
+
+    public function __construct(private ScheduleService $schedule)
+    {
+    }
 
     /** Transisi status yang diizinkan */
     private const TRANSITIONS = [
@@ -83,7 +90,7 @@ class KonselingController extends Controller
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
 
-        $this->assertGuruOwnsKonseling($request, $row);
+        $this->assertCanViewKonseling($request, $row);
 
         return response()->json(['success' => true, 'data' => $row]);
     }
@@ -98,7 +105,7 @@ class KonselingController extends Controller
             'tanggal' => 'required|date|after_or_equal:today',
             'jam' => 'required|string|max:10',
             'jenis' => 'required|in:Luring,Daring',
-            'kategori' => 'required|string|max:50',
+            'kategori' => ['required', 'string', Rule::in(KategoriKonseling::ALL)],
             'deskripsi' => 'required|string|min:20',
             'tipe_jadwal' => 'nullable|string|in:Rutin,Nonrutin',
             'jadwal_rutin_id' => 'nullable|integer',
@@ -138,16 +145,15 @@ class KonselingController extends Controller
             return response()->json(['success' => false, 'message' => 'Guru BK tidak aktif'], 400);
         }
 
-        // Cek konflik jadwal (guru & siswa di waktu yang sama)
-        $conflict = Konseling::where(function ($q) use ($siswa, $guru) {
-                $q->where('siswa_id', $siswa->id)
-                  ->orWhere('guru_id', $guru->id)
-                  ->orWhere('guru_bk', $guru->nama);
-            })
-            ->where('tanggal', $data['tanggal'])
-            ->where('jam', $data['jam'])
-            ->whereNotIn('status', ['Dibatalkan', 'Ditolak', 'Selesai'])
-            ->exists();
+        // Cek konflik jadwal (guru & siswa di waktu yang sama) — satu aturan
+        // bersama untuk web & API, lihat ScheduleService.
+        $conflict = $this->schedule->hasConflict(
+            $siswa->id,
+            $guru->id,
+            $guru->nama,
+            $data['tanggal'],
+            $data['jam']
+        );
 
         if ($conflict) {
             return response()->json([
@@ -188,7 +194,7 @@ class KonselingController extends Controller
         $v = Validator::make($request->all(), [
             'siswa_id' => 'required_without:nis|integer',
             'nis' => 'required_without:siswa_id|string',
-            'kategori' => 'required|string|max:50',
+            'kategori' => ['required', 'string', Rule::in(KategoriKonseling::ALL)],
             'deskripsi' => 'required|string|min:10',
             'jenis' => 'nullable|in:Luring,Daring',
             'catatan_walkin' => 'nullable|string',
@@ -235,7 +241,7 @@ class KonselingController extends Controller
         if (!$row) {
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
-        $this->assertGuruOwnsKonseling($request, $row);
+        $this->assertGuruCanManageKonseling($request, $row);
 
         if (!in_array($row->status, ['Menunggu'], true)) {
             return response()->json(['success' => false, 'message' => 'Status tidak memungkinkan konfirmasi'], 400);
@@ -259,19 +265,10 @@ class KonselingController extends Controller
             $row->status_konfirmasi = 'Ditolak';
             $row->alasan_batal = $data['alasan_batal'] ?? 'Ditolak oleh Guru BK';
         } else {
-            // Cek konflik jika ubah tanggal/jam
+            // Cek konflik jika ubah tanggal/jam — via ScheduleService bersama
             $tgl = $data['tanggal'] ?? $row->tanggal;
             $jam = $data['jam'] ?? $row->jam;
-            $conflict = Konseling::where('id', '!=', $row->id)
-                ->where(function ($q) use ($row) {
-                    $q->where('siswa_id', $row->siswa_id)
-                      ->orWhere('guru_id', $row->guru_id)
-                      ->orWhere('guru_bk', $row->guru_bk);
-                })
-                ->where('tanggal', $tgl)
-                ->where('jam', $jam)
-                ->whereNotIn('status', ['Dibatalkan', 'Ditolak', 'Selesai'])
-                ->exists();
+            $conflict = $this->schedule->hasConflictFor($row, $tgl, $jam);
             if ($conflict) {
                 return response()->json(['success' => false, 'message' => 'Jadwal bentrok'], 409);
             }
@@ -308,7 +305,7 @@ class KonselingController extends Controller
         if (!$row) {
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
-        $this->assertGuruOwnsKonseling($request, $row);
+        $this->assertGuruCanManageKonseling($request, $row);
 
         if (!in_array($row->status, ['Proses', 'Selesai'], true)) {
             return response()->json(['success' => false, 'message' => 'Laporan hanya untuk konseling yang sedang/sudah diproses'], 400);
@@ -343,7 +340,7 @@ class KonselingController extends Controller
         if (!$row) {
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
-        $this->assertGuruOwnsKonseling($request, $row);
+        $this->assertGuruCanManageKonseling($request, $row);
 
         $status = $request->input('status');
         $alasan = $request->input('alasan_batal') ?? $request->input('cancel_reason');

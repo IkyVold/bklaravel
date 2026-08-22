@@ -146,7 +146,7 @@
                         <label for="kategori">Kategori masalah</label>
                         <select id="kategori" name="kategori" required>
                             <option value="">Pilih kategori</option>
-                            <?php $__currentLoopData = ['Akademik','Sosial','Pribadi','Karir','Bullying','Keluarga']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $kat): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                            <?php $__currentLoopData = \App\Support\KategoriKonseling::ALL; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $kat): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                                 <option value="<?php echo e($kat); ?>" <?php if(old('kategori') === $kat): echo 'selected'; endif; ?>><?php echo e($kat); ?></option>
                             <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                         </select>

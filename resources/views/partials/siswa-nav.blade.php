@@ -4,22 +4,15 @@
     $firstName = explode(' ', trim($nama))[0] ?: 'Siswa';
     $foto = $authUser['foto'] ?? null;
     $initial = strtoupper(mb_substr($firstName, 0, 1));
-    $siswaId = session('auth_id');
+    $nis = $authUser['nis'] ?? null;
     $notifUnread = 0;
     $notifList = collect();
     try {
-        if (\Illuminate\Support\Facades\Schema::hasTable('notifikasi')) {
-            $q = \App\Models\Notifikasi::query();
-            if (\Illuminate\Support\Facades\Schema::hasColumn('notifikasi', 'siswa_id')) {
-                $q->where('siswa_id', $siswaId);
-            }
-            $notifUnread = (clone $q)->where(function ($w) {
-                if (\Illuminate\Support\Facades\Schema::hasColumn('notifikasi', 'is_read')) {
-                    $w->where('is_read', 0);
-                } elseif (\Illuminate\Support\Facades\Schema::hasColumn('notifikasi', 'dibaca')) {
-                    $w->where('dibaca', 0);
-                }
-            })->count();
+        // Skema tunggal: penerima_id (NIS) + penerima_role, sama dengan
+        // Api\NotifikasiController — bukan lagi siswa_id/is_read.
+        if ($nis) {
+            $q = \App\Models\Notifikasi::untukPenerima((string) $nis, 'siswa');
+            $notifUnread = (clone $q)->belumDibaca()->count();
             $notifList = (clone $q)->orderByDesc('id')->limit(8)->get();
         }
     } catch (\Throwable $e) {
@@ -73,7 +66,7 @@
                 <div class="notif-list">
                     @forelse($notifList as $n)
                         <a href="{{ $n->konseling_id ? route('siswa.status', $n->konseling_id) : route('siswa.konseling.index') }}"
-                           class="notif-item {{ empty($n->is_read) ? 'unread' : '' }}">
+                           class="notif-item {{ !$n->dibaca ? 'unread' : '' }}">
                             <span class="notif-item-dot"></span>
                             <div class="notif-item-body">
                                 <div class="notif-item-title">{{ $n->judul ?? 'Notifikasi' }}</div>

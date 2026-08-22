@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
@@ -18,34 +19,24 @@ class ChatController extends Controller
 
     public function history(Request $request): JsonResponse
     {
-        $sessionId = $request->query('session_id');
-        $konselingId = $request->query('konseling_id');
-
-        if (!$sessionId && !$konselingId) {
-            return response()->json(['success' => false, 'message' => 'session_id atau konseling_id wajib'], 400);
+        $v = Validator::make($request->query(), [
+            'konseling_id' => 'required|integer',
+        ]);
+        if ($v->fails()) {
+            return response()->json(['success' => false, 'message' => 'konseling_id wajib'], 400);
         }
 
-        if ($konselingId) {
-            $konseling = Konseling::find($konselingId);
-            if (!$konseling) {
-                return response()->json(['success' => false, 'message' => 'Konseling tidak ditemukan'], 404);
-            }
-            $this->assertGuruOwnsKonseling($request, $konseling);
-            $sessionId = $konseling->chat_session_id ?? ('konseling_' . $konseling->id);
-        } else {
-            // Cari konseling yang punya session ini
-            $konseling = Konseling::where('chat_session_id', $sessionId)->first();
-            if ($konseling) {
-                $this->assertGuruOwnsKonseling($request, $konseling);
-            } else {
-                // Fallback: hanya staff boleh lihat history arbitrary (untuk kompatibilitas)
-                if (!$this->isStaff($request)) {
-                    return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
-                }
-            }
+        $konseling = Konseling::find($request->query('konseling_id'));
+        if (!$konseling) {
+            return response()->json(['success' => false, 'message' => 'Konseling tidak ditemukan'], 404);
+        }
+        $this->assertCanViewKonseling($request, $konseling);
+
+        if (!$konseling->chat_session_id) {
+            return response()->json(['success' => true, 'data' => []]);
         }
 
-        $rows = ChatMessage::where('session_id', $sessionId)
+        $rows = ChatMessage::where('session_id', $konseling->chat_session_id)
             ->orderBy('created_at')
             ->get();
 
@@ -55,31 +46,34 @@ class ChatController extends Controller
     public function send(Request $request): JsonResponse
     {
         $v = Validator::make($request->all(), [
-            'session_id' => 'required|string|max:150',
+            'konseling_id' => 'required|integer',
             'message' => 'required|string|max:5000',
-            'konseling_id' => 'nullable|integer',
         ]);
 
         if ($v->fails()) {
             return response()->json(['success' => false, 'message' => $v->errors()->first()], 400);
         }
 
+        $konseling = Konseling::find($request->input('konseling_id'));
+        if (!$konseling) {
+            return response()->json(['success' => false, 'message' => 'Konseling tidak ditemukan'], 404);
+        }
+
+        // Kepemilikan/keanggotaan sesi selalu diperiksa di server; session_id
+        // TIDAK pernah diterima langsung dari client.
+        $this->assertCanViewKonseling($request, $konseling);
+
+        if (in_array($konseling->status, ['Dibatalkan', 'Ditolak'], true)) {
+            return response()->json(['success' => false, 'message' => 'Konseling sudah dibatalkan'], 403);
+        }
+
+        if (!$konseling->chat_session_id) {
+            $konseling->chat_session_id = (string) Str::uuid();
+            $konseling->save();
+        }
+
         $user = $request->user();
         $role = $this->currentRole($request);
-        $sessionId = $request->input('session_id');
-        $konselingId = $request->input('konseling_id');
-
-        if ($konselingId) {
-            $konseling = Konseling::find($konselingId);
-            if (!$konseling) {
-                return response()->json(['success' => false, 'message' => 'Konseling tidak ditemukan'], 404);
-            }
-            $this->assertGuruOwnsKonseling($request, $konseling);
-            if (in_array($konseling->status, ['Dibatalkan', 'Ditolak'], true)) {
-                return response()->json(['success' => false, 'message' => 'Konseling sudah dibatalkan'], 403);
-            }
-            $sessionId = $konseling->chat_session_id ?? $sessionId;
-        }
 
         // Identitas pengirim diambil dari token, BUKAN dari client
         $senderId = (string) $user->id;
@@ -87,7 +81,7 @@ class ChatController extends Controller
         $senderType = $role === 'siswa' ? 'siswa' : 'guru';
 
         $row = ChatMessage::create([
-            'session_id' => $sessionId,
+            'session_id' => $konseling->chat_session_id,
             'sender_id' => $senderId,
             'sender_name' => $senderName,
             'sender_type' => $senderType,

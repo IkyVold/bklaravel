@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\GuruBk;
 use App\Models\Konseling;
 use App\Models\Siswa;
+use App\Support\KategoriKonseling;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
@@ -37,18 +38,24 @@ class KepsekController extends Controller
                 }
                 return strcasecmp((string) $r->guru_bk, (string) $g->nama) === 0;
             });
-            return [
+            // Rekap per kategori memakai master kategori yang sama dengan
+            // dashboard utama (KategoriKonseling::ALL) — sebelumnya di sini
+            // hanya menghitung 4 dari 6 kategori (Karir & Keluarga hilang).
+            $byKat = [];
+            foreach (KategoriKonseling::ALL as $kat) {
+                $byKat[strtolower($kat)] = $own->filter(
+                    fn ($r) => strcasecmp((string) $r->kategori, $kat) === 0
+                )->count();
+            }
+            return array_merge([
                 'guru' => $g,
                 'total' => $own->count(),
-                'akademik' => $own->where('kategori', 'Akademik')->count(),
-                'sosial' => $own->where('kategori', 'Sosial')->count(),
-                'pribadi' => $own->where('kategori', 'Pribadi')->count(),
-                'bullying' => $own->where('kategori', 'Bullying')->count(),
-                'proses' => $own->where('status', 'Proses')->count(),
+            ], $byKat, [
+                'proses' => $own->whereIn('status', ['Menunggu', 'Proses'])->count(),
                 'selesai' => $own->where('status', 'Selesai')->count(),
                 'dibatalkan' => $own->where('status', 'Dibatalkan')->count(),
                 'laporan' => $own->filter(fn ($r) => !empty($r->laporan_kesimpulan) || !empty($r->laporan_created_at))->count(),
-            ];
+            ]);
         });
 
         $activeTab = 'rekap-guru';
@@ -63,7 +70,7 @@ class KepsekController extends Controller
         $kategori = $request->query('kategori', '');
 
         if ($filter === 'proses') {
-            $rows = $rows->where('status', 'Proses');
+            $rows = $rows->whereIn('status', ['Menunggu', 'Proses']);
         } elseif ($filter === 'selesai') {
             $rows = $rows->where('status', 'Selesai');
         } elseif ($filter === 'dibatalkan') {
@@ -119,7 +126,7 @@ class KepsekController extends Controller
             'siswaAktif' => $rows->pluck('siswa_id')->unique()->count(),
             'guruAktif' => $rows->pluck('guru_bk')->filter()->unique()->count(),
             'selesai' => $rows->where('status', 'Selesai')->count(),
-            'proses' => $rows->where('status', 'Proses')->count(),
+            'proses' => $rows->whereIn('status', ['Menunggu', 'Proses'])->count(),
             'dibatalkan' => $rows->where('status', 'Dibatalkan')->count(),
             'terkonfirmasi' => $rows->filter(function ($r) {
                 return in_array($r->status_konfirmasi, ['Terkonfirmasi', 'Dikonfirmasi', 'Tervalidasi'], true);
@@ -149,7 +156,7 @@ class KepsekController extends Controller
                     'nama' => $nama,
                     'total' => $own->count(),
                     'selesai' => $own->where('status', 'Selesai')->count(),
-                    'proses' => $own->where('status', 'Proses')->count(),
+                    'proses' => $own->whereIn('status', ['Menunggu', 'Proses'])->count(),
                     'laporan' => $own->filter(fn ($r) => !empty($r->laporan_kesimpulan) || !empty($r->laporan_created_at))->count(),
                 ];
             })->sortByDesc('total')->values();
@@ -166,7 +173,7 @@ class KepsekController extends Controller
                 'nama' => $g->nama,
                 'total' => $own->count(),
                 'selesai' => $own->where('status', 'Selesai')->count(),
-                'proses' => $own->where('status', 'Proses')->count(),
+                'proses' => $own->whereIn('status', ['Menunggu', 'Proses'])->count(),
                 'laporan' => $own->filter(fn ($r) => !empty($r->laporan_kesimpulan) || !empty($r->laporan_created_at))->count(),
             ];
         })->filter(fn ($g) => $g['total'] > 0)->sortByDesc('total')->values();

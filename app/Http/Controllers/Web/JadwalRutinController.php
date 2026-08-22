@@ -7,9 +7,18 @@ use App\Models\JadwalRutin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Validation\ValidationException;
 
 class JadwalRutinController extends Controller
 {
+    /**
+     * Durasi default (menit) yang dipakai untuk cek overlap ketika sebuah
+     * slot tidak mengisi jam_selesai (kolom ini nullable). Tanpa asumsi
+     * ini, slot tanpa jam_selesai tidak akan pernah terdeteksi bentrok
+     * dengan slot lain di sekitarnya.
+     */
+    private const DEFAULT_DURATION_MINUTES = 60;
+
     public function index()
     {
         $guruId = (int) Session::get('auth_id');
@@ -36,14 +45,23 @@ class JadwalRutinController extends Controller
             'keterangan' => 'nullable|string|max:150',
         ]);
 
+        $jamMulai = $this->normalizeTime($data['jam_mulai']);
+        $jamSelesai = !empty($data['jam_selesai']) ? $this->normalizeTime($data['jam_selesai']) : null;
+
+        try {
+            $this->assertValidInterval($jamMulai, $jamSelesai);
+            $this->assertNoOverlap($guruId, (int) $data['hari'], $jamMulai, $jamSelesai);
+        } catch (ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        }
+
         $payload = [
             'guru_id' => $guruId,
             'hari' => (int) $data['hari'],
-            'jam_mulai' => strlen($data['jam_mulai']) === 5 ? $data['jam_mulai'] . ':00' : $data['jam_mulai'],
+            'jam_mulai' => $jamMulai,
         ];
-        if (!empty($data['jam_selesai']) && Schema::hasColumn('jadwal_rutin', 'jam_selesai')) {
-            $js = $data['jam_selesai'];
-            $payload['jam_selesai'] = strlen($js) === 5 ? $js . ':00' : $js;
+        if ($jamSelesai !== null && Schema::hasColumn('jadwal_rutin', 'jam_selesai')) {
+            $payload['jam_selesai'] = $jamSelesai;
         }
         if (Schema::hasColumn('jadwal_rutin', 'jenis')) {
             $payload['jenis'] = $data['jenis'];
@@ -82,10 +100,20 @@ class JadwalRutinController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
+        $jamMulai = $this->normalizeTime($data['jam_mulai']);
+        $jamSelesai = !empty($data['jam_selesai']) ? $this->normalizeTime($data['jam_selesai']) : null;
+
+        try {
+            $this->assertValidInterval($jamMulai, $jamSelesai);
+            $this->assertNoOverlap($guruId, (int) $data['hari'], $jamMulai, $jamSelesai, $slot->id);
+        } catch (ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        }
+
         $slot->update([
             'hari' => (int) $data['hari'],
-            'jam_mulai' => $data['jam_mulai'],
-            'jam_selesai' => $data['jam_selesai'] ?: null,
+            'jam_mulai' => $jamMulai,
+            'jam_selesai' => $jamSelesai,
             'jenis' => $data['jenis'],
             'keterangan' => $data['keterangan'] ?? null,
             'is_active' => $request->boolean('is_active', true),
@@ -113,5 +141,79 @@ class JadwalRutinController extends Controller
 
         return redirect()->route('guru.jadwal-rutin.index')
             ->with('success', $slot->is_active ? 'Slot diaktifkan.' : 'Slot dinonaktifkan.');
+    }
+
+    /**
+     * Normalisasi input jam ke format H:i:s (input bisa H:i atau H:i:s).
+     */
+    private function normalizeTime(string $time): string
+    {
+        return strlen($time) === 5 ? $time . ':00' : $time;
+    }
+
+    /**
+     * Pastikan jam_selesai > jam_mulai ketika jam_selesai diisi. Sebelumnya
+     * hanya format waktu yang divalidasi, sehingga slot seperti
+     * 10.00–09.00 masih bisa tersimpan.
+     *
+     * @throws ValidationException
+     */
+    private function assertValidInterval(string $jamMulai, ?string $jamSelesai): void
+    {
+        if ($jamSelesai === null) {
+            return;
+        }
+        if ($jamSelesai <= $jamMulai) {
+            throw ValidationException::withMessages([
+                'jam_selesai' => 'Jam selesai harus lebih besar dari jam mulai.',
+            ]);
+        }
+    }
+
+    /**
+     * Pastikan slot baru/diedit tidak overlap dengan slot lain milik guru
+     * yang sama pada hari yang sama. Slot tanpa jam_selesai dianggap
+     * berdurasi DEFAULT_DURATION_MINUTES untuk keperluan pengecekan ini.
+     * Hanya slot yang masih aktif yang diperiksa — slot nonaktif dianggap
+     * tidak lagi dipakai sehingga tidak perlu diikutkan.
+     *
+     * @throws ValidationException
+     */
+    private function assertNoOverlap(
+        int $guruId,
+        int $hari,
+        string $jamMulai,
+        ?string $jamSelesai,
+        ?int $excludeId = null
+    ): void {
+        $newStart = strtotime($jamMulai);
+        $newEnd = $jamSelesai !== null
+            ? strtotime($jamSelesai)
+            : $newStart + self::DEFAULT_DURATION_MINUTES * 60;
+
+        $query = JadwalRutin::where('guru_id', $guruId)
+            ->where('hari', $hari)
+            ->where('is_active', true);
+
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        foreach ($query->get() as $existing) {
+            $existingStart = strtotime((string) $existing->jam_mulai);
+            $existingEnd = $existing->jam_selesai
+                ? strtotime((string) $existing->jam_selesai)
+                : $existingStart + self::DEFAULT_DURATION_MINUTES * 60;
+
+            // Dua interval overlap jika salah satu mulai sebelum yang lain
+            // berakhir, di kedua arah.
+            if ($newStart < $existingEnd && $existingStart < $newEnd) {
+                $existingLabel = substr((string) $existing->jam_mulai, 0, 5)
+                    . ($existing->jam_selesai ? '–' . substr((string) $existing->jam_selesai, 0, 5) : '');
+                throw ValidationException::withMessages([
+                    'jam_mulai' => "Slot bentrok dengan jadwal rutin lain pada hari yang sama ({$existingLabel}).",
+                ]);
+            }
+        }
     }
 }

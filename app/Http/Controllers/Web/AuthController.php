@@ -7,12 +7,17 @@ use App\Models\Admin;
 use App\Models\GuruBk;
 use App\Models\Kepsek;
 use App\Models\Siswa;
+use App\Services\AuthenticationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 
 class AuthController extends Controller
 {
+    public function __construct(private AuthenticationService $auth)
+    {
+    }
+
     public function showLogin()
     {
         if (Session::has('auth_role')) {
@@ -47,18 +52,50 @@ class AuthController extends Controller
     private function loginSiswa(Request $request)
     {
         $request->validate(['nis' => 'required|string']);
+        $nis = $request->input('nis');
 
-        $siswa = Siswa::where('nis', $request->nis)->first();
-        if (!$siswa || !$siswa->verifyPassword($request->password)) {
+        // Burst throttle — identik dengan jalur API supaya login web tidak
+        // bisa dipakai sebagai jalur brute force tanpa batas.
+        $throttleKey = $this->auth->throttleKey('siswa', $nis, $request);
+        if ($this->auth->tooManyAttempts($throttleKey)) {
+            $seconds = $this->auth->availableIn($throttleKey);
+            return back()->withInput()->withErrors([
+                'login' => "Terlalu banyak percobaan login. Coba lagi dalam {$seconds} detik.",
+            ]);
+        }
+
+        $siswa = Siswa::where('nis', $nis)->first();
+        if (!$siswa) {
+            $this->auth->hitThrottle($throttleKey);
             return back()->withInput()->withErrors(['login' => 'NIS atau password salah.']);
         }
 
-        // Reset kunci jika kolom ada (tidak mengubah data lain)
-        if (Schema::hasColumn('siswa', 'failed_login_attempts')) {
-            $siswa->failed_login_attempts = 0;
-            $siswa->locked_until = null;
-            $siswa->save();
+        // Akun yang terkunci lewat API (locked_until) HARUS ikut ditolak di
+        // sini juga — sebelumnya jalur web tidak memeriksa kolom ini sama
+        // sekali sehingga lockout bisa dilewati hanya dengan login lewat web.
+        if ($this->auth->isSiswaLocked($siswa)) {
+            $jam = $siswa->locked_until->timezone('Asia/Jakarta')->format('d M Y H:i');
+            return back()->withInput()->withErrors([
+                'login' => "Akun terkunci sementara karena terlalu banyak percobaan login gagal. Coba lagi setelah {$jam} WIB.",
+            ]);
         }
+
+        if (!$siswa->verifyPassword($request->password)) {
+            $this->auth->hitThrottle($throttleKey);
+            $this->auth->registerSiswaFailure($siswa);
+
+            if ($this->auth->isSiswaLocked($siswa)) {
+                $jam = $siswa->locked_until->timezone('Asia/Jakarta')->format('d M Y H:i');
+                return back()->withInput()->withErrors([
+                    'login' => "Akun dikunci sementara karena beberapa kali login gagal. Coba lagi setelah {$jam} WIB.",
+                ]);
+            }
+
+            return back()->withInput()->withErrors(['login' => 'NIS atau password salah.']);
+        }
+
+        $this->auth->clearThrottle($throttleKey);
+        $this->auth->resetSiswaAttempts($siswa);
 
         Session::put('auth_role', 'siswa');
         Session::put('auth_id', $siswa->id);
@@ -76,16 +113,31 @@ class AuthController extends Controller
     private function loginStaff(Request $request, string $model, string $role)
     {
         $request->validate(['username' => 'required|string']);
+        $username = $request->input('username');
 
         $table = (new $model)->getTable();
         if (!Schema::hasTable($table)) {
             return back()->withInput()->withErrors(['login' => "Tabel {$table} belum ada."]);
         }
 
-        $user = $model::where('username', $request->username)->first();
+        // Guru/Kepsek/Admin belum punya kolom lockout persisten, tetapi
+        // tetap dilindungi burst throttle yang sama dengan API supaya
+        // keamanan kedua jalur konsisten.
+        $throttleKey = $this->auth->throttleKey($role, $username, $request);
+        if ($this->auth->tooManyAttempts($throttleKey)) {
+            $seconds = $this->auth->availableIn($throttleKey);
+            return back()->withInput()->withErrors([
+                'login' => "Terlalu banyak percobaan login. Coba lagi dalam {$seconds} detik.",
+            ]);
+        }
+
+        $user = $model::where('username', $username)->first();
         if (!$user || !($user->is_active ?? true) || !$user->verifyPassword($request->password)) {
+            $this->auth->hitThrottle($throttleKey);
             return back()->withInput()->withErrors(['login' => 'Username atau password salah.']);
         }
+
+        $this->auth->clearThrottle($throttleKey);
 
         $extra = [
             'username' => $user->username,

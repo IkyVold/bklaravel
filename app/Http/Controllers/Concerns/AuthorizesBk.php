@@ -73,17 +73,17 @@ trait AuthorizesBk
         }
     }
 
-    protected function assertGuruOwnsKonseling(Request $request, $konseling): void
+    /**
+     * Hak MELIHAT saja. Admin & Kepsek boleh (monitoring), Guru BK pemilik boleh,
+     * Siswa pemilik boleh. Tidak memberi hak mengubah data.
+     */
+    protected function assertCanViewKonseling(Request $request, $konseling): void
     {
         if ($this->isRole($request, 'admin', 'kepsek')) {
             return;
         }
-        if ($this->isGuru($request)) {
-            $user = $request->user();
-            $nama = $user->nama ?? '';
-            if ((int) ($konseling->guru_id ?? 0) === (int) $user->id || strcasecmp((string) $konseling->guru_bk, $nama) === 0) {
-                return;
-            }
+        if ($this->isGuru($request) && $this->guruOwnsKonseling($request, $konseling)) {
+            return;
         }
         if ($this->isSiswa($request)) {
             $user = $request->user();
@@ -92,5 +92,29 @@ trait AuthorizesBk
             }
         }
         abort(response()->json(['success' => false, 'message' => 'Akses ditolak'], 403));
+    }
+
+    /**
+     * Hak MENGUBAH (konfirmasi, laporan, ubah status). Hanya Guru BK pemilik
+     * konsultasi, atau Admin. Kepsek TIDAK boleh (hanya monitoring di web).
+     * Siswa TIDAK PERNAH lolos di sini, walaupun ia pemilik konsultasi.
+     */
+    protected function assertGuruCanManageKonseling(Request $request, $konseling): void
+    {
+        if ($this->isRole($request, 'admin')) {
+            return;
+        }
+        if ($this->isGuru($request) && $this->guruOwnsKonseling($request, $konseling)) {
+            return;
+        }
+        abort(response()->json(['success' => false, 'message' => 'Akses ditolak'], 403));
+    }
+
+    private function guruOwnsKonseling(Request $request, $konseling): bool
+    {
+        $user = $request->user();
+        $nama = $user->nama ?? '';
+        return (int) ($konseling->guru_id ?? 0) === (int) $user->id
+            || strcasecmp((string) $konseling->guru_bk, $nama) === 0;
     }
 }

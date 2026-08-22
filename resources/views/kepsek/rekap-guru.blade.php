@@ -26,7 +26,9 @@
                                 <th>Akademik</th>
                                 <th>Sosial</th>
                                 <th>Pribadi</th>
+                                <th>Karir</th>
                                 <th>Bullying</th>
+                                <th>Keluarga</th>
                                 <th>Proses</th>
                                 <th>Selesai</th>
                                 <th>Dibatalkan</th>
@@ -42,14 +44,16 @@
                                 <td>{{ $item['akademik'] }}</td>
                                 <td>{{ $item['sosial'] }}</td>
                                 <td>{{ $item['pribadi'] }}</td>
+                                <td>{{ $item['karir'] }}</td>
                                 <td>{{ $item['bullying'] }}</td>
+                                <td>{{ $item['keluarga'] }}</td>
                                 <td><span class="status-badge status-proses">{{ $item['proses'] }}</span></td>
                                 <td><span class="status-badge status-selesai">{{ $item['selesai'] }}</span></td>
                                 <td><span class="status-badge status-dibatalkan">{{ $item['dibatalkan'] }}</span></td>
                                 <td><span class="status-badge status-belum">{{ $item['laporan'] }}</span></td>
                             </tr>
                             @empty
-                            <tr><td colspan="11" style="text-align:center;padding:40px;color:#718096">Belum ada data Guru BK</td></tr>
+                            <tr><td colspan="13" style="text-align:center;padding:40px;color:#718096">Belum ada data Guru BK</td></tr>
                             @endforelse
                         </tbody>
                     </table>

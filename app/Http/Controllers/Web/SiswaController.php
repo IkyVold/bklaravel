@@ -40,13 +40,11 @@ class SiswaController extends Controller
         try {
             $nama = session('auth_user')['nama'] ?? '';
             if ($nama) {
+                // "Menunggu Konfirmasi" = pengajuan baru berstatus Menunggu,
+                // disamakan dengan Web/KonselingController::indexGuru().
                 $prosesCount = Konseling::where('guru_bk', $nama)
-                    ->where('status', 'Proses')
-                    ->where(function ($w) {
-                        $w->whereNull('status_konfirmasi')
-                            ->orWhere('status_konfirmasi', 'Belum Dikonfirmasi')
-                            ->orWhere('status_konfirmasi', '');
-                    })->count();
+                    ->where('status', 'Menunggu')
+                    ->count();
             }
         } catch (\Throwable $e) {
         }

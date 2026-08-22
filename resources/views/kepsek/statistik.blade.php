@@ -204,7 +204,7 @@
                                 <td>{{ $items->filter(fn($r) => strcasecmp((string)$r->kategori, 'Sosial')===0)->count() }}</td>
                                 <td>{{ $items->filter(fn($r) => strcasecmp((string)$r->kategori, 'Pribadi')===0)->count() }}</td>
                                 <td>{{ $items->filter(fn($r) => strcasecmp((string)$r->kategori, 'Bullying')===0)->count() }}</td>
-                                <td>{{ $items->where('status', 'Proses')->count() }}</td>
+                                <td>{{ $items->whereIn('status', ['Menunggu', 'Proses'])->count() }}</td>
                                 <td>{{ $selesai }}</td>
                                 <td>
                                     <span class="status-badge {{ $laporan >= $selesai && $selesai > 0 ? 'status-selesai' : 'status-proses' }}">

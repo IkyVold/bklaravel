@@ -204,7 +204,7 @@
                                 <td><?php echo e($items->filter(fn($r) => strcasecmp((string)$r->kategori, 'Sosial')===0)->count()); ?></td>
                                 <td><?php echo e($items->filter(fn($r) => strcasecmp((string)$r->kategori, 'Pribadi')===0)->count()); ?></td>
                                 <td><?php echo e($items->filter(fn($r) => strcasecmp((string)$r->kategori, 'Bullying')===0)->count()); ?></td>
-                                <td><?php echo e($items->where('status', 'Proses')->count()); ?></td>
+                                <td><?php echo e($items->whereIn('status', ['Menunggu', 'Proses'])->count()); ?></td>
                                 <td><?php echo e($selesai); ?></td>
                                 <td>
                                     <span class="status-badge <?php echo e($laporan >= $selesai && $selesai > 0 ? 'status-selesai' : 'status-proses'); ?>">

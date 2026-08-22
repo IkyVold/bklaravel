@@ -42,7 +42,7 @@ class CetakLaporanController extends Controller
         });
 
         if ($filter === 'proses') {
-            $query->where('status', 'Proses');
+            $query->whereIn('status', ['Menunggu', 'Proses']);
         } elseif ($filter === 'terkonfirmasi') {
             $query->whereIn('status_konfirmasi', ['Terkonfirmasi', 'Dikonfirmasi', 'Tervalidasi'])
                 ->whereNotIn('status', ['Selesai', 'Dibatalkan']);

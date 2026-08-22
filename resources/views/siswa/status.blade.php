@@ -18,11 +18,11 @@
     $jenis = $row->jenis ?? '-';
     $kategori = $row->kategori ?? '-';
     $deskripsi = $row->deskripsi ?: 'Tidak ada deskripsi';
-    $status = $row->status ?? 'Proses';
+    $status = $row->status ?? 'Menunggu';
     $statusKonfirmasi = $row->status_konfirmasi ?? 'Belum Dikonfirmasi';
 
     $statusBadgeClass = 'badge badge-process';
-    $statusBadgeLabel = 'Proses';
+    $statusBadgeLabel = $status;
     if ($status === 'Selesai') {
         $statusBadgeClass = 'badge badge-validated';
         $statusBadgeLabel = 'Selesai';
@@ -164,9 +164,18 @@
                 </svg>
                 Selesai
             </a>
-            <form method="POST" action="{{ route('siswa.konseling.destroy', $row->id) }}" style="display:inline" onsubmit="return confirm('Apakah Anda yakin ingin membatalkan pengajuan ini dan mengajukan ulang?')">
+            <form method="POST" action="{{ route('siswa.konseling.batal', $row->id) }}" style="display:inline" class="js-konsul-ulang-form"
+                  onsubmit="return (function(f){
+                      var alasan = prompt('Alasan pembatalan (minimal 10 karakter):', 'Ingin mengajukan ulang konsultasi');
+                      if (alasan === null) return false;
+                      alasan = alasan.trim();
+                      if (alasan.length < 10) { alert('Alasan pembatalan minimal 10 karakter.'); return false; }
+                      f.querySelector('input[name=alasan]').value = alasan;
+                      return confirm('Apakah Anda yakin ingin membatalkan pengajuan ini dan mengajukan ulang?');
+                  })(this)">
                 @csrf
-                @method('DELETE')
+                <input type="hidden" name="alasan" value="">
+                <input type="hidden" name="ajukan_ulang" value="1">
                 <button type="submit" class="btn btn-secondary">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                         <polyline points="1 4 1 10 7 10" />

@@ -8,7 +8,6 @@
     $guruNotifs = collect();
     $guruUnread = 0;
     try {
-        \App\Http\Controllers\Web\NotifikasiWebController::ensureTable();
         if ($username) {
             $guruNotifs = \App\Models\NotifikasiGuru::where('guru_username', $username)
                 ->orderByDesc('created_at')->limit(20)->get();
@@ -45,12 +44,25 @@
                     @endif
                 </div>
                 @forelse($guruNotifs as $n)
-                    <a href="{{ $n->konseling_id ? route('guru.notifikasi.read', $n->id) : '#' }}"
-                       style="display:block;padding:12px 14px;border-bottom:1px solid #f5f5f0;text-decoration:none;color:inherit;{{ $n->is_read ? 'opacity:.7' : 'background:#f8f7ff' }}">
-                        <div style="font-weight:700;font-size:13px;margin-bottom:4px">{{ $n->judul }}</div>
-                        <div style="font-size:12.5px;line-height:1.4;color:#555">{{ $n->pesan }}</div>
-                        <div style="font-size:11px;color:#999;margin-top:4px">{{ $n->created_at ? \Carbon\Carbon::parse($n->created_at)->diffForHumans() : '' }}</div>
-                    </a>
+                    @if($n->konseling_id)
+                        {{-- Menandai notifikasi dibaca mengubah data (is_read), jadi harus
+                             POST + CSRF, bukan GET/link biasa. --}}
+                        <form method="POST" action="{{ route('guru.notifikasi.read', $n->id) }}" style="margin:0">
+                            @csrf
+                            <button type="submit"
+                               style="display:block;width:100%;text-align:left;padding:12px 14px;border:none;border-bottom:1px solid #f5f5f0;text-decoration:none;color:inherit;font:inherit;cursor:pointer;{{ $n->is_read ? 'opacity:.7;background:#fff' : 'background:#f8f7ff' }}">
+                                <div style="font-weight:700;font-size:13px;margin-bottom:4px">{{ $n->judul }}</div>
+                                <div style="font-size:12.5px;line-height:1.4;color:#555">{{ $n->pesan }}</div>
+                                <div style="font-size:11px;color:#999;margin-top:4px">{{ $n->created_at ? \Carbon\Carbon::parse($n->created_at)->diffForHumans() : '' }}</div>
+                            </button>
+                        </form>
+                    @else
+                        <div style="display:block;padding:12px 14px;border-bottom:1px solid #f5f5f0;color:inherit;{{ $n->is_read ? 'opacity:.7' : 'background:#f8f7ff' }}">
+                            <div style="font-weight:700;font-size:13px;margin-bottom:4px">{{ $n->judul }}</div>
+                            <div style="font-size:12.5px;line-height:1.4;color:#555">{{ $n->pesan }}</div>
+                            <div style="font-size:11px;color:#999;margin-top:4px">{{ $n->created_at ? \Carbon\Carbon::parse($n->created_at)->diffForHumans() : '' }}</div>
+                        </div>
+                    @endif
                 @empty
                     <div style="padding:24px;text-align:center;color:#888;font-size:13px">Belum ada notifikasi</div>
                 @endforelse

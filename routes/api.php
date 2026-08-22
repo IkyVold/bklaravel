@@ -26,22 +26,26 @@ Route::post('/logout-public', [AuthController::class, 'logout']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
-    // Siswa
-    Route::get('/siswa', [SiswaController::class, 'list']);
-    Route::post('/siswa', [SiswaController::class, 'create']);
-    Route::post('/siswa/import-rows', [SiswaController::class, 'importRows']);
+    // Siswa — melihat daftar siswa dibutuhkan staff (guru/kepsek/admin) untuk
+    // keperluan konseling & monitoring. Menambah/mengimpor data master siswa
+    // dibatasi Admin saja.
+    Route::middleware('ability:guru,kepsek,admin')->group(function () {
+        Route::get('/siswa', [SiswaController::class, 'list']);
+        Route::get('/riwayat-kelas/{nis}/aktif', [RiwayatKelasController::class, 'getAktif']);
+        Route::get('/riwayat-kelas/{nis}', [RiwayatKelasController::class, 'list']);
+    });
+    Route::middleware('ability:admin')->group(function () {
+        Route::post('/siswa', [SiswaController::class, 'create']);
+        Route::post('/siswa/import-rows', [SiswaController::class, 'importRows']);
+        Route::post('/riwayat-kelas', [RiwayatKelasController::class, 'create']);
+        Route::delete('/riwayat-kelas/{id}', [RiwayatKelasController::class, 'remove']);
+    });
 
     // Profil
     Route::get('/profile/{nis}', [ProfileController::class, 'get']);
     Route::put('/profile/{nis}', [ProfileController::class, 'update']);
     Route::put('/profile/{nis}/foto', [ProfileController::class, 'updateFoto']);
     Route::delete('/profile/{nis}/foto', [ProfileController::class, 'deleteFoto']);
-
-    // Riwayat kelas
-    Route::get('/riwayat-kelas/{nis}/aktif', [RiwayatKelasController::class, 'getAktif']);
-    Route::get('/riwayat-kelas/{nis}', [RiwayatKelasController::class, 'list']);
-    Route::post('/riwayat-kelas', [RiwayatKelasController::class, 'create']);
-    Route::delete('/riwayat-kelas/{id}', [RiwayatKelasController::class, 'remove']);
 
     // Informasi BK
     Route::get('/informasi', [InformasiController::class, 'list']);
@@ -72,13 +76,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat', [ChatController::class, 'ai']); // kompatibel React: POST /api/chat
     Route::post('/chat/ai', [ChatController::class, 'ai']);
 
-    // Akun (admin)
-    Route::get('/akun/guru', [AkunController::class, 'listGuru']);
-    Route::post('/akun/guru', [AkunController::class, 'createGuru']);
-    Route::put('/akun/guru/{id}', [AkunController::class, 'updateGuru']);
-    Route::delete('/akun/guru/{id}', [AkunController::class, 'deleteGuru']);
-    Route::get('/akun/kepsek', [AkunController::class, 'listKepsek']);
-    Route::post('/akun/kepsek', [AkunController::class, 'createKepsek']);
-    Route::put('/akun/kepsek/{id}', [AkunController::class, 'updateKepsek']);
-    Route::delete('/akun/kepsek/{id}', [AkunController::class, 'deleteKepsek']);
+    // Akun (admin) — hanya Admin boleh membuat/mengubah/menonaktifkan akun
+    // Guru BK & Kepala Sekolah.
+    Route::middleware('ability:admin')->group(function () {
+        Route::get('/akun/guru', [AkunController::class, 'listGuru']);
+        Route::post('/akun/guru', [AkunController::class, 'createGuru']);
+        Route::put('/akun/guru/{id}', [AkunController::class, 'updateGuru']);
+        Route::delete('/akun/guru/{id}', [AkunController::class, 'deleteGuru']);
+        Route::get('/akun/kepsek', [AkunController::class, 'listKepsek']);
+        Route::post('/akun/kepsek', [AkunController::class, 'createKepsek']);
+        Route::put('/akun/kepsek/{id}', [AkunController::class, 'updateKepsek']);
+        Route::delete('/akun/kepsek/{id}', [AkunController::class, 'deleteKepsek']);
+    });
 });

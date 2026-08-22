@@ -147,7 +147,7 @@
                         <label for="kategori">Kategori masalah</label>
                         <select id="kategori" name="kategori" required>
                             <option value="">Pilih kategori</option>
-                            @foreach(['Akademik','Sosial','Pribadi','Karir','Bullying','Keluarga'] as $kat)
+                            @foreach(\App\Support\KategoriKonseling::ALL as $kat)
                                 <option value="{{ $kat }}" @selected(old('kategori') === $kat)>{{ $kat }}</option>
                             @endforeach
                         </select>

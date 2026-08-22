@@ -1,3 +1,37 @@
+# BK System — Full Laravel (Blade) — Security Hardened
+
+**Kompatibel PHP 8.2+** (Laravel 11).
+
+Aplikasi Bimbingan Konseling sekolah **tanpa React** — pure Laravel + Blade + API Sanctum.
+
+## Perbaikan Keamanan (revisi dosen)
+
+1. **Autentikasi penuh**
+   - Web: Session + middleware `role`
+   - API: Laravel Sanctum (Bearer token) + abilities per role
+   - Password: bcrypt (auto-upgrade dari MD5 legacy saat login)
+
+2. **Otorisasi ketat**
+   - Profile hanya milik sendiri (atau staff)
+   - `/api/konseling-all` hanya Kepsek/Admin
+   - Detail/update konseling dicek ownership (siswa/guru)
+   - Informasi BK write hanya Guru/Admin
+   - Notifikasi scoped ke penerima
+
+3. **Chat**
+   - `session_id` = UUID (`chat_session_id` di tabel konseling), bukan prediksi NIS+nama+tanggal
+   - Identitas pengirim diambil dari token, bukan dari client
+   - AI: rate limit 20/menit, semua message dipaksa role `user` (anti prompt injection)
+
+4. **Upload foto**
+   - Validasi MIME + magic, filename UUID, mimes terbatas
+
+5. **Business logic**
+   - Transisi status konseling divalidasi (state machine)
+   - Pembatalan menyimpan `alasan_batal` + notifikasi
+   - Cek konflik jadwal (double booking)
+   - Tidak ada hard DELETE untuk “batalkan”
+
 ## Install
 
 ```bash

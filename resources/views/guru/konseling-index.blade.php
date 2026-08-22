@@ -233,9 +233,12 @@
                                     } else {
                                         $skLabel = $sk ?: 'Belum Dikonfirmasi';
                                     }
-                                    $status = $row->status ?? 'Proses';
-                                    $belum = $skLabel !== 'Terkonfirmasi' && $status === 'Proses';
-                                    $sudahProses = $skLabel === 'Terkonfirmasi' && $status === 'Proses';
+                                    $status = $row->status ?? 'Menunggu';
+                                    // Menunggu = pengajuan baru belum dikonfirmasi. Cek status_konfirmasi
+                                    // juga untuk data lama yang mungkin masih berstatus Proses tapi
+                                    // belum sempat dikonfirmasi sebelum migrasi state machine ini.
+                                    $belum = $status === 'Menunggu' || ($status === 'Proses' && $skLabel !== 'Terkonfirmasi');
+                                    $sudahProses = $status === 'Proses' && $skLabel === 'Terkonfirmasi';
                                     $isOnline = ($row->jenis === 'Daring') && ($skLabel === 'Terkonfirmasi') && ($status !== 'Dibatalkan');
                                     $hasLaporan = !empty($row->laporan_kesimpulan) || !empty($row->laporan_created_at);
                                     $av = strtoupper(mb_substr($namaSiswa, 0, 1));
@@ -358,7 +361,7 @@
       <label style="display:block;font-size:12px;font-weight:700;color:#5F5E5A;margin-bottom:4px">Kategori Masalah *</label>
       <select name="kategori" required style="width:100%;padding:10px 12px;border:.5px solid #d3d1c7;border-radius:8px;margin-bottom:10px;box-sizing:border-box">
         <option value="">Pilih kategori</option>
-        @foreach(['Akademik','Sosial','Pribadi','Karir','Bullying','Keluarga','Lainnya'] as $k)
+        @foreach(\App\Support\KategoriKonseling::ALL as $k)
           <option value="{{ $k }}">{{ $k }}</option>
         @endforeach
       </select>

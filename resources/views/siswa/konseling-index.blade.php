@@ -31,7 +31,7 @@
 @php
     $total = $rows->count();
     $selesai = $rows->where('status', 'Selesai')->count();
-    $proses = $rows->where('status', 'Proses')->count();
+    $proses = $rows->whereIn('status', ['Menunggu', 'Proses'])->count();
     $kategoriIcon = [
         'Akademik' => '📚', 'Sosial' => '👥', 'Pribadi' => '💭',
         'Karir' => '🎯', 'Bullying' => '🛡️', 'Keluarga' => '🏠',
@@ -122,7 +122,7 @@
                     @php
                         $hasLaporan = !empty($item->laporan_kesimpulan) || !empty($item->laporan);
                         $isTerkonfirmasi = in_array($item->status_konfirmasi ?? '', ['Terkonfirmasi', 'Tervalidasi', 'Dikonfirmasi'], true);
-                        $st = $item->status ?? 'Proses';
+                        $st = $item->status ?? 'Menunggu';
                         $badgeCls = $st === 'Selesai' ? 'badge-selesai' : ($st === 'Dibatalkan' ? 'badge-dibatalkan' : 'badge-proses');
                         $kat = $item->kategori ?: '—';
                         $icon = $kategoriIcon[$kat] ?? '📚';
@@ -164,7 +164,7 @@
                                     </span>
                                 </div>
                             </div>
-                            @if($st === 'Proses')
+                            @if(in_array($st, ['Menunggu', 'Proses'], true))
                             <div class="info-line">
                                 <div class="info-line-icon">{{ $isTerkonfirmasi ? '✅' : '⏳' }}</div>
                                 <div class="info-line-key">Konfirmasi</div>

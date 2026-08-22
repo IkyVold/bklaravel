@@ -8,8 +8,10 @@ use App\Models\Konseling;
 use Illuminate\Http\Request;
 use App\Services\AiChatService;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
@@ -41,13 +43,12 @@ class ChatController extends Controller
     {
         $role = Session::get('auth_role');
         if ($role === 'guru') {
-            $this->assertGuruChatAccess($konselingId);
+            $row = $this->assertGuruChatAccess($konselingId);
         } else {
-            $this->assertSiswaChatAccess($konselingId);
+            $row = $this->assertSiswaChatAccess($konselingId);
         }
 
-        $this->ensureTable();
-        $sessionId = 'konseling_' . $konselingId;
+        $sessionId = $this->sessionIdFor($row);
         $afterId = (int) $request->query('after_id', 0);
 
         $q = ChatMessage::where('session_id', $sessionId)->orderBy('id');
@@ -70,6 +71,19 @@ class ChatController extends Controller
 
     public function ai(Request $request, AiChatService $ai)
     {
+        // Rate limit sama seperti Api/ChatController::ai() — supaya siswa
+        // tidak bisa memakai jalur web untuk melewati batas API dan
+        // menghabiskan quota Groq.
+        $key = 'ai-chat:' . (Session::get('auth_id') ?? $request->ip());
+        if (RateLimiter::tooManyAttempts($key, 20)) { // 20 req / menit
+            $seconds = RateLimiter::availableIn($key);
+            return response()->json([
+                'success' => false,
+                'reply' => "Terlalu banyak permintaan. Coba lagi dalam {$seconds} detik.",
+            ], 429);
+        }
+        RateLimiter::hit($key, 60);
+
         $messages = $request->input('messages');
         if (!is_array($messages) || $messages === []) {
             $single = trim((string) $request->input('message', ''));
@@ -110,8 +124,7 @@ class ChatController extends Controller
 
     protected function renderRoom(Konseling $row, string $role)
     {
-        $this->ensureTable();
-        $sessionId = 'konseling_' . $row->id;
+        $sessionId = $this->sessionIdFor($row);
         $messages = ChatMessage::where('session_id', $sessionId)->orderBy('id')->limit(300)->get();
         $siswa = $row->siswa;
         $guruName = $row->guru_bk ?: 'Guru BK';
@@ -132,7 +145,6 @@ class ChatController extends Controller
 
     protected function storeMessage(Request $request, Konseling $row, string $senderType)
     {
-        $this->ensureTable();
         $data = $request->validate(['message' => 'required|string|max:2000']);
         $text = trim($data['message']);
         if ($text === '') {
@@ -144,7 +156,7 @@ class ChatController extends Controller
 
         $auth = Session::get('auth_user', []);
         $msg = ChatMessage::create([
-            'session_id' => 'konseling_' . $row->id,
+            'session_id' => $this->sessionIdFor($row),
             'sender_id' => (string) Session::get('auth_id'),
             'sender_name' => $auth['nama'] ?? ($senderType === 'guru' ? 'Guru BK' : 'Siswa'),
             'sender_type' => $senderType,
@@ -170,6 +182,21 @@ class ChatController extends Controller
 
         $route = $senderType === 'guru' ? 'guru.chat' : 'siswa.chat';
         return redirect()->route($route, $row->id);
+    }
+
+    /**
+     * Satu sumber kebenaran untuk ID room chat: konseling.chat_session_id (UUID),
+     * sama persis dengan yang dipakai Api/ChatController. Dibuat sekali (lazy)
+     * kalau konsultasi ini belum pernah punya session, lalu dipakai seterusnya.
+     * Web TIDAK BOLEH lagi memakai pola 'konseling_{id}' sendiri.
+     */
+    protected function sessionIdFor(Konseling $row): string
+    {
+        if (empty($row->chat_session_id)) {
+            $row->chat_session_id = (string) Str::uuid();
+            $row->save();
+        }
+        return $row->chat_session_id;
     }
 
     protected function assertSiswaChatAccess(int $konselingId): Konseling
@@ -217,21 +244,5 @@ class ChatController extends Controller
         if (!$okKonf) {
             abort(403, 'Chat tersedia setelah jadwal dikonfirmasi Guru BK.');
         }
-    }
-
-    protected function ensureTable(): void
-    {
-        if (Schema::hasTable('chat_messages')) {
-            return;
-        }
-        Schema::create('chat_messages', function ($table) {
-            $table->id();
-            $table->string('session_id', 64)->index();
-            $table->string('sender_id', 64)->nullable();
-            $table->string('sender_name', 100)->nullable();
-            $table->string('sender_type', 20)->nullable();
-            $table->text('message');
-            $table->timestamp('created_at')->useCurrent();
-        });
     }
 }

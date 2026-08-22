@@ -54,9 +54,9 @@
     elseif (in_array($sk, ['Belum Dikonfirmasi'], true)) $skLabel = 'Belum Dikonfirmasi';
     else $skLabel = $sk ?: 'Belum Dikonfirmasi';
 
-    $status = $row->status ?? 'Proses';
-    $belumKonfirmasi = $skLabel !== 'Terkonfirmasi' && $status === 'Proses';
-    $sudahKonfirmasiBelumSelesai = $skLabel === 'Terkonfirmasi' && $status === 'Proses';
+    $status = $row->status ?? 'Menunggu';
+    $belumKonfirmasi = $status === 'Menunggu' || ($status === 'Proses' && $skLabel !== 'Terkonfirmasi');
+    $sudahKonfirmasiBelumSelesai = $status === 'Proses' && $skLabel === 'Terkonfirmasi';
     $hasLaporan = !empty($row->laporan_kesimpulan) || !empty($row->laporan_created_at);
     $canEditLaporan = false;
     $sisaEditText = '';

@@ -36,9 +36,14 @@ class Siswa extends Authenticatable
         return $this->hasMany(Konseling::class, 'siswa_id');
     }
 
-    public function notifikasi(): HasMany
+    /**
+     * Notifikasi milik siswa ini. Tabel `notifikasi` tidak punya foreign
+     * key siswa_id — penerima diidentifikasi lewat penerima_id (NIS) +
+     * penerima_role = 'siswa', sama seperti yang dipakai Api\NotifikasiController.
+     */
+    public function notifikasi()
     {
-        return $this->hasMany(Notifikasi::class, 'siswa_id');
+        return Notifikasi::untukPenerima((string) $this->nis, 'siswa');
     }
 
     public function riwayatKelas(): HasMany

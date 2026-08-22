@@ -16,7 +16,7 @@ main:has(.detail-history-page) {
 @section('content')
 @php
     $guruNama = $row->guru_bk ?? ($guru->nama ?? '-');
-    $status = $row->status ?? 'Proses';
+    $status = $row->status ?? 'Menunggu';
     $sk = $row->status_konfirmasi ?? 'Belum Dikonfirmasi';
     if (in_array($sk, ['Tervalidasi', 'Dikonfirmasi'], true)) {
         $statusKonfirmasi = 'Terkonfirmasi';
@@ -33,7 +33,7 @@ main:has(.detail-history-page) {
         || !empty($row->laporan_status_penanganan) || !empty($row->laporan);
 
     $showChatBtn = (($row->jenis ?? '') === 'Daring') && $isTerkonfirmasi && $status !== 'Dibatalkan' && $status !== 'Selesai';
-    $canBatalkan = $status === 'Proses' && !$isTerkonfirmasi;
+    $canBatalkan = in_array($status, ['Menunggu', 'Proses'], true) && !$isTerkonfirmasi;
 
     $tgl = $row->tanggal ? \Carbon\Carbon::parse($row->tanggal)->translatedFormat('d M Y') : '—';
     $jam = $row->jam ? substr((string) $row->jam, 0, 5) : '—';

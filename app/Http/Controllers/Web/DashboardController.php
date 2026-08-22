@@ -10,7 +10,6 @@ use App\Models\Konseling;
 use App\Models\Notifikasi;
 use App\Models\Siswa;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 
 class DashboardController extends Controller
@@ -33,12 +32,9 @@ class DashboardController extends Controller
 
         $informasi = InformasiBk::orderByDesc('id')->limit(5)->get();
 
-        $notif = 0;
-        if (Schema::hasTable('notifikasi') && Schema::hasColumn('notifikasi', 'siswa_id')) {
-            $notif = Notifikasi::where('siswa_id', $siswa->id)
-                ->where('is_read', 0)
-                ->count();
-        }
+        // Skema tunggal: penerima_id (NIS) + penerima_role, sama dengan
+        // Api\NotifikasiController — bukan lagi siswa_id/is_read.
+        $notif = Notifikasi::untukPenerima((string) $siswa->nis, 'siswa')->belumDibaca()->count();
 
         return view('siswa.dashboard', compact('siswa', 'konseling', 'informasi', 'notif', 'chatSessions'));
     }

@@ -1,0 +1,7 @@
+// ============================================================
+// TAMBAHKAN 1 BARIS ini di dalam group Route::middleware('role:guru')
+// SEBELUM Route::get('/konseling/{id}', ...)
+// JANGAN ganti seluruh routes/web.php
+// ============================================================
+
+    Route::get('/cetak-laporan', [KonselingController::class, 'cetakLaporan'])->name('cetak');

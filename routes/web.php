@@ -32,7 +32,6 @@ Route::middleware('role:siswa')->prefix('siswa')->name('siswa.')->group(function
     Route::post('/notifikasi/read-all', [NotifikasiWebController::class, 'readAll'])->name('notifikasi.readAll');
 
     Route::get('/status/{id}', [KonselingController::class, 'statusSiswa'])->name('status');
-    Route::delete('/konseling/{id}', [KonselingController::class, 'destroySiswa'])->name('konseling.destroy');
     Route::post('/konseling/{id}/batal', [KonselingController::class, 'batalSiswa'])->name('konseling.batal');
     Route::get('/konseling/{id}', [KonselingController::class, 'show'])->name('konseling.show');
     Route::get('/informasi', [InformasiController::class, 'index'])->name('informasi');
@@ -52,7 +51,7 @@ Route::middleware('role:guru')->prefix('guru')->name('guru.')->group(function ()
     Route::get('/chat/{konselingId}', [\App\Http\Controllers\Web\ChatController::class, 'roomGuru'])->name('chat');
     Route::get('/notifikasi/json', [NotifikasiWebController::class, 'jsonGuru'])->name('notifikasi.json');
     Route::post('/notifikasi/read-all', [NotifikasiWebController::class, 'readAll'])->name('notifikasi.readAll');
-    Route::get('/notifikasi/{id}/read', [NotifikasiWebController::class, 'markReadGuru'])->name('notifikasi.read');
+    Route::post('/notifikasi/{id}/read', [NotifikasiWebController::class, 'markReadGuru'])->name('notifikasi.read');
     Route::post('/chat/{konselingId}', [\App\Http\Controllers\Web\ChatController::class, 'sendGuru'])->name('chat.send');
     Route::get('/chat/{konselingId}/messages', [\App\Http\Controllers\Web\ChatController::class, 'historyJson'])->name('chat.messages');
     Route::get('/siswa', [SiswaController::class, 'index'])->name('siswa.index');

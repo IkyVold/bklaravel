@@ -41,7 +41,7 @@
                         NIS: {{ $siswa->nis ?? '–' }} · Kelas: {{ $row->kelas_siswa ?? $siswa->kelas ?? '–' }}
                     </div>
                     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-                        <span class="status-badge {{ $statusClass }}">{{ $row->status ?? 'Proses' }}</span>
+                        <span class="status-badge {{ $statusClass }}">{{ $row->status ?? 'Menunggu' }}</span>
                         <span class="status-badge {{ $skClass }}">{{ $sk }}</span>
                     </div>
                 </div>

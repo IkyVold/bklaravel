@@ -108,7 +108,7 @@ return new class extends Migration
                 $table->string('kategori', 50)->nullable();
                 $table->text('deskripsi')->nullable();
                 $table->string('kelas_siswa', 20)->nullable();
-                $table->string('status', 20)->default('Proses');
+                $table->string('status', 20)->default('Menunggu');
                 $table->string('status_konfirmasi', 30)->default('Belum Dikonfirmasi');
                 $table->date('tanggal_konfirmasi')->nullable();
                 $table->time('jam_konfirmasi')->nullable();
