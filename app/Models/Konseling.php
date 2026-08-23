@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Konseling extends Model
 {
+    use HasFactory;
+
     protected $table = 'konseling';
 
     public $timestamps = false;
@@ -23,9 +26,13 @@ class Konseling extends Model
     ];
 
     protected $casts = [
-        'tanggal' => 'date',
-        'tanggal_konfirmasi' => 'date',
-        'laporan_tanggal' => 'date',
+        // Format eksplisit 'Y-m-d' PENTING: cast 'date' polos (tanpa format)
+        // disimpan Eloquent sebagai "Y-m-d H:i:s" (dengan jam 00:00:00), yang
+        // bisa membuat perbandingan tanggal berbasis string di tempat lain
+        // gagal secara diam-diam. Lihat juga ScheduleService::hasConflict().
+        'tanggal' => 'date:Y-m-d',
+        'tanggal_konfirmasi' => 'date:Y-m-d',
+        'laporan_tanggal' => 'date:Y-m-d',
         'laporan_created_at' => 'datetime',
         'created_at' => 'datetime',
         'input_manual' => 'boolean',

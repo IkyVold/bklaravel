@@ -45,9 +45,7 @@ php artisan key:generate
 # DB_PASSWORD=
 
 php artisan migrate
-php artisan db:seed          # akun demo
-# ATAU import dump lama:
-# mysql -u root -p bk_system < database/bk_system_dump.sql
+php artisan db:seed          # lihat catatan di bagian "Akun awal" di bawah
 
 php artisan storage:link
 php artisan serve
@@ -62,24 +60,82 @@ php artisan migrate
 
 Buka: http://127.0.0.1:8000
 
-## Akun demo (setelah db:seed)
+## Menjalankan test
 
-| Role   | Login        | Password  |
-|--------|--------------|-----------|
-| Admin  | admin        | admin123  |
-| Guru   | guru_bk      | guru123   |
-| Kepsek | kepsek       | kepsek123 |
-| Siswa  | NIS: 1234    | 1234      |
+Test otomatis (PHPUnit/Feature test) memakai SQLite in-memory lewat
+`phpunit.xml` — tidak menyentuh database MySQL di `.env`, jadi aman
+dijalankan kapan saja tanpa setup tambahan:
+
+```bash
+php artisan test
+# atau
+vendor/bin/phpunit
+```
+
+Cakupan test saat ini fokus ke poin-poin revisi keamanan/logika (lihat
+`tests/Feature/`):
+
+- **Api/AdminEndpointAuthorizationTest** — token siswa tidak bisa mencapai
+  endpoint admin (`/api/akun/*`, `/api/siswa` create, `/api/riwayat-kelas`
+  delete)
+- **Api/KonselingAuthorizationTest** — siswa tidak bisa konfirmasi/laporan
+  konsultasinya sendiri; Guru A tidak bisa kelola konsultasi Guru B; Kepsek
+  hanya bisa lihat, bukan kelola
+- **Api/ChatOwnershipTest** — `konseling_id` wajib, tidak ada fallback
+  `session_id` arbitrary, siswa tidak bisa kirim pesan ke sesi orang lain
+- **Api/ScheduleConflictTest** — pengajuan konseling ditolak kalau bentrok
+  jadwal dengan Guru BK yang sama
+- **Web/KonselingWebOwnershipTest** — Guru A tidak bisa lihat detail
+  konsultasi Guru B lewat web; route hard-delete sudah tidak ada; batal
+  siswa memakai soft-cancel (baris tetap ada untuk audit)
+- **Web/JadwalRutinOverlapTest** — slot jadwal rutin yang overlap atau
+  `jam_selesai <= jam_mulai` ditolak
+- **Auth/LoginLockoutTest** — akun yang terkunci lewat percobaan gagal di
+  API juga ikut ditolak saat dicoba lewat web
+
+Test ini belum mencakup semua modul (chat real-time, import Excel,
+notifikasi, cetak laporan) — tambahkan test baru di folder yang sama
+seiring modul lain diverifikasi.
+
+## Akun awal
+
+`BkSeeder` sengaja **tidak membuat akun apa pun secara otomatis** (lihat isi
+`database/seeders/BkSeeder.php`) — ini untuk mencegah kredensial default yang
+dapat ditebak ikut ter-deploy ke lingkungan produksi.
+
+Untuk membuat akun pertama (misalnya Admin), buat secara manual lewat
+`php artisan tinker` dan **tentukan sendiri password yang kuat**, contoh:
+
+```bash
+php artisan tinker
+```
+```php
+\App\Models\Admin::create([
+    'username' => 'admin',
+    'password' => bcrypt('GANTI_DENGAN_PASSWORD_KUAT_ANDA'),
+    'nama'     => 'Administrator',
+]);
+```
+
+Lakukan hal yang sama untuk model `GuruBk`, `Kepsek`, dan `Siswa` sesuai
+kebutuhan. **Jangan pernah menuliskan password asli di README, kode, atau
+file yang ikut dikirim/di-commit** — password demo yang pernah ada di versi
+sebelumnya (`admin123`, `guru123`, `kepsek123`) sudah dihapus dari
+dokumentasi ini dan sebaiknya tidak dipakai lagi jika sempat diterapkan di
+database mana pun.
 
 ## API Auth
 
 ```
 POST /api/login
-{ "role": "siswa", "nis": "1234", "password": "1234" }
+{ "role": "siswa", "nis": "<nis_siswa>", "password": "<password_siswa>" }
 → { "token": "...", "role": "siswa", "user": {...} }
 
 Header: Authorization: Bearer <token>
 ```
+
+(Nilai `<nis_siswa>` dan `<password_siswa>` di atas hanya placeholder format
+request — bukan kredensial yang benar-benar aktif.)
 
 ## Struktur penting
 

@@ -168,7 +168,16 @@ class AuthController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
         }
 
-        $role = $user->currentAccessToken()?->abilities[0] ?? 'unknown';
+        // Jangan baca ->abilities sebagai array mentah: pada token mock dari
+        // Sanctum::actingAs() (dipakai di test) properti itu tidak pernah
+        // terisi. tokenCan() bekerja konsisten untuk token asli maupun mock.
+        $role = 'unknown';
+        foreach (['admin', 'kepsek', 'guru', 'siswa'] as $candidate) {
+            if ($user->tokenCan($candidate)) {
+                $role = $candidate;
+                break;
+            }
+        }
 
         return response()->json([
             'success' => true,

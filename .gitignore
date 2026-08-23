@@ -1,5 +1,42 @@
-/vendor/
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+
 .env
 .env.*
 !.env.example
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+/.zed
 
+# Laravel storage — keep the directory structure, ignore generated content
+/storage/app/*
+!/storage/app/.gitkeep
+!/storage/app/public
+/storage/framework/cache/*
+!/storage/framework/cache/.gitkeep
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitkeep
+/storage/framework/testing/*
+!/storage/framework/testing/.gitkeep
+/storage/framework/views/*
+!/storage/framework/views/.gitkeep
+/storage/logs/*
+!/storage/logs/.gitkeep
+
+# Jangan pernah ikutkan dump database, backup, atau paket distribusi lama
+*_dump.sql
+*.sqlite
+*.zip
+*.tar.gz

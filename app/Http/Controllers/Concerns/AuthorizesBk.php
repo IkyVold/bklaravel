@@ -6,16 +6,39 @@ use Illuminate\Http\Request;
 
 trait AuthorizesBk
 {
-    protected function tokenAbilities(Request $request): array
-    {
-        $token = $request->user()?->currentAccessToken();
-        return $token?->abilities ?? [];
-    }
+    /**
+     * Daftar role/ability yang dikenal sistem. Setiap token diterbitkan
+     * dengan TEPAT SATU ability yang namanya sama dengan role (lihat
+     * AuthController::login). Urutan di sini menentukan prioritas saat
+     * mendeteksi role dari token.
+     */
+    private const KNOWN_ROLES = ['admin', 'kepsek', 'guru', 'siswa'];
 
+    /**
+     * PENTING: jangan baca $token->abilities sebagai array mentah.
+     * Pada token asli (PersonalAccessToken) itu memang berfungsi, tapi
+     * Sanctum::actingAs() (dipakai di seluruh test suite) membuat MOCK
+     * token yang hanya men-stub method can($ability) — properti
+     * ->abilities pada mock tersebut tidak pernah terisi, sehingga akan
+     * selalu bernilai null dan setiap pengecekan role akan gagal secara
+     * diam-diam (selalu dianggap tidak berrole apa pun). Gunakan
+     * tokenCan()/can() yang bekerja konsisten baik untuk token asli
+     * maupun token hasil Sanctum::actingAs().
+     */
     protected function currentRole(Request $request): ?string
     {
-        $abilities = $this->tokenAbilities($request);
-        return $abilities[0] ?? null;
+        $user = $request->user();
+        if (!$user) {
+            return null;
+        }
+
+        foreach (self::KNOWN_ROLES as $role) {
+            if ($user->tokenCan($role)) {
+                return $role;
+            }
+        }
+
+        return null;
     }
 
     protected function isRole(Request $request, string ...$roles): bool

@@ -26,7 +26,15 @@ class ScheduleService
         string $jam,
         ?int $excludeId = null
     ): bool {
-        $query = Konseling::where('tanggal', $tanggal)
+        // PENTING: gunakan whereDate(), bukan where('tanggal', ...). Kolom
+        // 'tanggal' di-cast sebagai 'date' pada model Konseling, dan Eloquent
+        // secara default menyimpan cast tanggal dengan format lengkap
+        // "Y-m-d H:i:s" (bukan "Y-m-d") kecuali format eksplisit diberikan.
+        // Perbandingan string mentah where('tanggal', 'Y-m-d') tidak akan
+        // pernah cocok dengan nilai tersimpan "Y-m-d 00:00:00", sehingga
+        // bentrok jadwal tidak pernah terdeteksi. whereDate() membandingkan
+        // hanya bagian tanggalnya sehingga aman terhadap format penyimpanan.
+        $query = Konseling::whereDate('tanggal', $tanggal)
             ->where('jam', $jam)
             ->whereNotIn('status', ['Dibatalkan', 'Ditolak', 'Selesai'])
             ->where(function ($q) use ($siswaId, $guruId, $guruBk) {
