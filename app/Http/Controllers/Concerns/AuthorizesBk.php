@@ -99,12 +99,42 @@ trait AuthorizesBk
     /**
      * Hak MELIHAT saja. Admin & Kepsek boleh (monitoring), Guru BK pemilik boleh,
      * Siswa pemilik boleh. Tidak memberi hak mengubah data.
+     *
+     * PENTING: fungsi ini HANYA untuk melihat (baca data konseling, riwayat
+     * chat untuk keperluan monitoring, dsb). JANGAN dipakai untuk
+     * mengizinkan aksi menulis/berpartisipasi seperti mengirim pesan chat —
+     * lihat assertCanChatKonseling() untuk itu. Sebelumnya
+     * ChatController@send salah memakai fungsi ini, sehingga Admin/Kepsek
+     * yang seharusnya cuma boleh MELIHAT ikut bisa MENGIRIM pesan chat
+     * konseling (revisi 24 Agustus 2026, poin 2).
      */
     protected function assertCanViewKonseling(Request $request, $konseling): void
     {
         if ($this->isRole($request, 'admin', 'kepsek')) {
             return;
         }
+        if ($this->isGuru($request) && $this->guruOwnsKonseling($request, $konseling)) {
+            return;
+        }
+        if ($this->isSiswa($request)) {
+            $user = $request->user();
+            if ((int) $konseling->siswa_id === (int) $user->id) {
+                return;
+            }
+        }
+        abort(response()->json(['success' => false, 'message' => 'Akses ditolak'], 403));
+    }
+
+    /**
+     * Hak IKUT SERTA di chat konseling (kirim pesan). BEDA dengan
+     * assertCanViewKonseling(): Admin & Kepsek boleh melihat data
+     * konseling untuk monitoring, tapi mereka BUKAN peserta sesi
+     * konseling seorang siswa dengan Guru BK-nya, jadi tidak boleh
+     * mengirim pesan di dalamnya. Hanya siswa pemilik dan Guru BK
+     * pemilik yang boleh berpartisipasi.
+     */
+    protected function assertCanChatKonseling(Request $request, $konseling): void
+    {
         if ($this->isGuru($request) && $this->guruOwnsKonseling($request, $konseling)) {
             return;
         }
@@ -133,11 +163,31 @@ trait AuthorizesBk
         abort(response()->json(['success' => false, 'message' => 'Akses ditolak'], 403));
     }
 
+    /**
+     * PERBAIKAN (revisi 24 Agustus 2026, poin 8): dulu ownership diperiksa
+     * dengan guru_id COCOK ATAU nama COCOK — walau konseling sudah punya
+     * guru_id yang menunjuk Guru BK tertentu, sistem tetap mencoba
+     * mencocokkan nama sebagai fallback. Nama BUKAN identifier unik: jika
+     * ada dua Guru BK dengan nama sama persis dan konseling ini sebenarnya
+     * milik Guru A (guru_id = id Guru A), Guru B bisa ikut lolos ownership
+     * check hanya karena namanya kebetulan sama.
+     *
+     * Sekarang: begitu konseling punya guru_id, itu SATU-SATUNYA sumber
+     * kebenaran — fallback nama HANYA dipakai untuk data lama yang memang
+     * belum punya guru_id sama sekali (guru_id null), bukan dipakai
+     * bersamaan/menggantikan guru_id yang sudah ada tapi tidak cocok.
+     */
     private function guruOwnsKonseling(Request $request, $konseling): bool
     {
         $user = $request->user();
+
+        if (!is_null($konseling->guru_id)) {
+            return (int) $konseling->guru_id === (int) $user->id;
+        }
+
+        // Data lama sebelum kolom guru_id ada — satu-satunya kasus fallback
+        // nama sah dipakai.
         $nama = $user->nama ?? '';
-        return (int) ($konseling->guru_id ?? 0) === (int) $user->id
-            || strcasecmp((string) $konseling->guru_bk, $nama) === 0;
+        return $nama !== '' && strcasecmp((string) $konseling->guru_bk, $nama) === 0;
     }
 }

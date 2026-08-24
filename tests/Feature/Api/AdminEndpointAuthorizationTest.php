@@ -62,7 +62,14 @@ class AdminEndpointAuthorizationTest extends TestCase
         ])->assertForbidden();
     }
 
-    public function test_guru_token_can_list_siswa_but_not_create(): void
+    /**
+     * PERBAIKAN (revisi 24 Agustus 2026, poin 10): Guru BK sekarang BOLEH
+     * membuat master siswa lewat API (disamakan dengan jalur Web yang
+     * memang sudah lama memberi kemampuan ini), tapi tidak boleh
+     * menentukan passwordnya — dipaksa server = NIS berapa pun yang
+     * dikirim di body.
+     */
+    public function test_guru_token_can_list_and_create_siswa_but_not_set_password(): void
     {
         $guru = GuruBk::factory()->create();
         Sanctum::actingAs($guru, ['guru']);
@@ -74,7 +81,34 @@ class AdminEndpointAuthorizationTest extends TestCase
             'nama' => 'Siswa Baru',
             'kelas' => '10 IPA 1',
             'password' => 'password123',
-        ])->assertForbidden();
+        ])->assertStatus(400);
+
+        $this->postJson('/api/siswa', [
+            'nis' => '1234567890',
+            'nama' => 'Siswa Baru',
+            'kelas' => '10 IPA 1',
+        ])->assertCreated();
+
+        $siswa = Siswa::where('nis', '1234567890')->first();
+        $this->assertNotNull($siswa);
+        $this->assertTrue($siswa->verifyPassword('1234567890'));
+    }
+
+    public function test_admin_token_can_create_siswa_with_custom_password(): void
+    {
+        $admin = Admin::factory()->create();
+        Sanctum::actingAs($admin, ['admin']);
+
+        $this->postJson('/api/siswa', [
+            'nis' => '9876543210',
+            'nama' => 'Siswa Admin',
+            'kelas' => '10 IPA 1',
+            'password' => 'passwordAdmin',
+        ])->assertCreated();
+
+        $siswa = Siswa::where('nis', '9876543210')->first();
+        $this->assertNotNull($siswa);
+        $this->assertTrue($siswa->verifyPassword('passwordAdmin'));
     }
 
     public function test_siswa_token_cannot_delete_riwayat_kelas(): void

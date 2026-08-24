@@ -49,10 +49,11 @@
                             <option value="Perempuan" @selected(old('jenis_kelamin', $siswa->jenis_kelamin ?? '')==='Perempuan')>Perempuan</option>
                         </select>
                     </div>
+                    @unless($siswa)
                     <div class="form-group">
-                        <label>Password {{ $siswa ? '(kosongkan jika tidak diubah)' : '' }}</label>
-                        <input type="password" name="password" class="form-control" {{ $siswa ? '' : 'required' }} minlength="4">
+                        <p style="color:#6b7280;font-size:0.9em">Password akun siswa otomatis = NIS saat pertama dibuat. Guru BK tidak dapat mengatur atau mengubah password siswa dari sini — reset password hanya dapat dilakukan oleh Admin atau siswa itu sendiri.</p>
                     </div>
+                    @endunless
                     <button type="submit" class="btn-cetak btn-cetak-green">💾 Simpan</button>
                 </form>
             </div>

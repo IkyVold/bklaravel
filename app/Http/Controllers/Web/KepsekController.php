@@ -101,8 +101,22 @@ class KepsekController extends Controller
 
     public function show(int $id)
     {
-        $row = Konseling::with('siswa')->findOrFail($id);
+        $konseling = Konseling::with('siswa')->findOrFail($id);
         $activeTab = 'semua-konseling';
+
+        // PERBAIKAN (revisi 24 Agustus 2026 — "Klaim kerahasiaan vs akses
+        // Kepala Sekolah"): view kepsek.detail dulu menerima $row (objek
+        // Konseling utuh) dan menampilkan deskripsi masalah, kesimpulan,
+        // rekomendasi, serta catatan laporan Guru BK — padahal halaman
+        // siswa/konseling-pilih menjanjikan isi konsultasi hanya untuk
+        // siswa & Guru BK yang dipilih. $row yang dikirim ke view sekarang
+        // adalah array dari Konseling::untukMonitoringKepsek() (data
+        // administratif saja, single source of truth dipakai juga oleh
+        // Api\KonselingController) — bukan lagi objek Eloquent utuh, supaya
+        // view tidak bisa (sengaja atau tidak sengaja) mengakses field
+        // narasi konsultasi yang seharusnya rahasia.
+        $row = $konseling->untukMonitoringKepsek();
+
         return view('kepsek.detail', compact('row', 'activeTab'));
     }
 

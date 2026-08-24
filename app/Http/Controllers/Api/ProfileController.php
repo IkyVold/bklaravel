@@ -50,10 +50,24 @@ class ProfileController extends Controller
             'tanggal_lahir' => 'nullable|date',
             'alamat' => 'nullable|string|max:500',
             'no_telepon' => 'nullable|string|max:15',
-            'password' => 'nullable|string|min:6',
         ];
         if ($this->isStaff($request)) {
             $rules['kelas'] = 'sometimes|string|max:20';
+        }
+
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 1): 'password' SENGAJA
+        // tidak dibuka untuk seluruh staff. assertSiswaOwnsNis() di atas
+        // membolehkan guru/kepsek/admin melewati pengecekan kepemilikan
+        // NIS (karena mereka memang perlu lihat/ubah field lain pada
+        // profil siswa manapun) — tapi itu artinya jika 'password' selalu
+        // ada di $rules, Guru BK atau Kepala Sekolah bisa PUT ke profil
+        // siswa mana pun dan mengganti passwordnya. Reset password siswa
+        // hanya boleh dilakukan oleh siswa itu sendiri (ganti password
+        // sendiri) atau Admin (mengelola akun siswa) — sama seperti
+        // pembatasan create siswa yang sudah 'ability:admin' di
+        // routes/api.php. Guru BK/Kepsek tidak termasuk di sini.
+        if ($this->isSiswa($request) || $this->isAdmin($request)) {
+            $rules['password'] = 'nullable|string|min:6';
         }
 
         $v = Validator::make($request->all(), $rules);

@@ -20,23 +20,51 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::post('/login', [AuthController::class, 'login']);
-Route::post('/logout', [AuthController::class, 'logout']);
-Route::post('/logout-public', [AuthController::class, 'logout']);
 
 Route::middleware('auth:sanctum')->group(function () {
+    // PERBAIKAN (revisi 24 Agustus 2026, poin 9): '/logout' dulu berada DI
+    // LUAR grup 'auth:sanctum'. AuthController::logout() memanggil
+    // $request->user()?->currentAccessToken()?->delete() — tapi tanpa
+    // middleware auth:sanctum, Bearer token pada request tidak pernah
+    // di-resolve jadi authenticated user sama sekali, jadi $request->user()
+    // selalu null dan tidak ada token yang benar-benar dihapus. Endpoint
+    // tetap menjawab "Logout berhasil" (karena logout() tidak pernah
+    // mengecek null-nya), padahal token pemanggil masih berlaku penuh.
+    // Sekarang '/logout' wajib lewat auth:sanctum lebih dulu, sama seperti
+    // endpoint lain yang butuh identitas token.
+    //
+    // '/logout-public' (dulu ada di luar sini juga, memanggil controller
+    // yang sama) DIHAPUS: karena tanpa auth:sanctum ia tidak pernah benar-
+    // benar mencabut token apa pun, endpoint itu hanya memberi ilusi logout
+    // berhasil. Kalau ke depan memang dibutuhkan endpoint "logout" yang
+    // aman dipanggil tanpa token valid (mis. token sudah kedaluwarsa di
+    // sisi client), itu cukup ditangani di client (buang token tersimpan),
+    // tidak perlu endpoint server yang berpura-pura mencabut token.
+    Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
     // Siswa — melihat daftar siswa dibutuhkan staff (guru/kepsek/admin) untuk
-    // keperluan konseling & monitoring. Menambah/mengimpor data master siswa
-    // dibatasi Admin saja.
+    // keperluan konseling & monitoring.
     Route::middleware('ability:guru,kepsek,admin')->group(function () {
         Route::get('/siswa', [SiswaController::class, 'list']);
         Route::get('/riwayat-kelas/{nis}/aktif', [RiwayatKelasController::class, 'getAktif']);
         Route::get('/riwayat-kelas/{nis}', [RiwayatKelasController::class, 'list']);
     });
-    Route::middleware('ability:admin')->group(function () {
+    // PERBAIKAN (revisi 24 Agustus 2026, poin 10): dulu create/import-rows
+    // siswa hanya 'ability:admin', padahal jalur Web sudah lama memberi
+    // Guru BK kemampuan tambah & import siswa (kelola data master
+    // operasional adalah tugas Guru BK sehari-hari). Sekarang disamakan:
+    // Guru BK juga boleh lewat API. Yang TETAP dikunci adalah field
+    // password — lihat SiswaController@create/@importRows: kalau
+    // pemanggil Guru BK, password SELALU dipaksa = NIS, tidak peduli apa
+    // yang dikirim client. Hanya Admin yang boleh menentukan password
+    // custom saat membuat siswa (sama seperti Admin tetap satu-satunya
+    // staff yang boleh reset password siswa yang sudah ada, poin 1).
+    Route::middleware('ability:guru,admin')->group(function () {
         Route::post('/siswa', [SiswaController::class, 'create']);
         Route::post('/siswa/import-rows', [SiswaController::class, 'importRows']);
+    });
+    Route::middleware('ability:admin')->group(function () {
         Route::post('/riwayat-kelas', [RiwayatKelasController::class, 'create']);
         Route::delete('/riwayat-kelas/{id}', [RiwayatKelasController::class, 'remove']);
     });

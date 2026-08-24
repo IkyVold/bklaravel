@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\AuthorizesBk;
 use App\Http\Controllers\Controller;
 use App\Models\Siswa;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Validator;
 
 class SiswaController extends Controller
 {
+    use AuthorizesBk;
+
     public function list(Request $request): JsonResponse
     {
         $q = Siswa::query()->orderBy('kelas')->orderBy('nama');
@@ -31,19 +34,34 @@ class SiswaController extends Controller
 
     public function create(Request $request): JsonResponse
     {
-        $v = Validator::make($request->all(), [
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' hanya
+        // wajib/dipakai untuk Admin. Guru BK boleh membuat siswa baru
+        // (rute ini sekarang 'ability:guru,admin'), tapi tidak boleh
+        // menentukan passwordnya sendiri — dipaksa = NIS, apa pun yang
+        // dikirim di body. Reset password siswa yang SUDAH ADA tetap
+        // hanya lewat Api/ProfileController (siswa sendiri atau Admin).
+        $isAdmin = $this->isAdmin($request);
+
+        $rules = [
             'nis' => 'required|string|max:10|unique:siswa,nis',
             'nama' => 'required|string|max:100',
             'kelas' => 'required|string|max:20',
-            'password' => 'required|string|min:4',
             'jenis_kelamin' => 'nullable|in:Laki-laki,Perempuan',
-        ]);
+        ];
+        $rules['password'] = $isAdmin ? 'nullable|string|min:4' : 'prohibited';
+
+        $v = Validator::make($request->all(), $rules);
 
         if ($v->fails()) {
             return response()->json(['success' => false, 'message' => $v->errors()->first()], 400);
         }
 
-        $siswa = Siswa::create($v->validated());
+        $data = $v->validated();
+        if (empty($data['password'])) {
+            $data['password'] = $data['nis'];
+        }
+
+        $siswa = Siswa::create($data);
 
         return response()->json([
             'success' => true,
@@ -59,6 +77,14 @@ class SiswaController extends Controller
             return response()->json(['success' => false, 'message' => 'Data kosong'], 400);
         }
 
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): sama seperti create()
+        // di atas — Guru BK boleh import siswa (rute ini sekarang
+        // 'ability:guru,admin'), tapi field 'password' pada tiap baris
+        // diabaikan sepenuhnya kalau pemanggil bukan Admin; password
+        // selalu = NIS. Hanya Admin yang boleh menyertakan password custom
+        // per baris import.
+        $isAdmin = $this->isAdmin($request);
+
         $inserted = 0;
         $skipped = 0;
         $errors = [];
@@ -67,7 +93,7 @@ class SiswaController extends Controller
             $nis = trim((string) ($row['nis'] ?? ''));
             $nama = trim((string) ($row['nama'] ?? ''));
             $kelas = trim((string) ($row['kelas'] ?? ''));
-            $password = (string) ($row['password'] ?? $nis);
+            $password = $isAdmin ? (string) ($row['password'] ?? $nis) : $nis;
 
             if (!$nis || !$nama || !$kelas) {
                 $skipped++;

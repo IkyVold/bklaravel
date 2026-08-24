@@ -1,5 +1,0 @@
-// Di group role:guru tambahkan:
-Route::get('/jadwal-rutin', [\App\Http\Controllers\Web\JadwalRutinController::class, 'index'])->name('jadwal-rutin.index');
-Route::post('/jadwal-rutin', [\App\Http\Controllers\Web\JadwalRutinController::class, 'store'])->name('jadwal-rutin.store');
-Route::post('/jadwal-rutin/{id}/toggle', [\App\Http\Controllers\Web\JadwalRutinController::class, 'toggle'])->name('jadwal-rutin.toggle');
-Route::delete('/jadwal-rutin/{id}', [\App\Http\Controllers\Web\JadwalRutinController::class, 'destroy'])->name('jadwal-rutin.destroy');

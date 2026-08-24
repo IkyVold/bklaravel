@@ -61,10 +61,38 @@ class ChatController extends Controller
 
         // Kepemilikan/keanggotaan sesi selalu diperiksa di server; session_id
         // TIDAK pernah diterima langsung dari client.
-        $this->assertCanViewKonseling($request, $konseling);
+        //
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 2): sebelumnya di sini
+        // dipakai assertCanViewKonseling(), yang SENGAJA meloloskan
+        // Admin & Kepsek untuk keperluan monitoring (lihat data). Karena
+        // dipakai juga di endpoint kirim pesan, Admin/Kepsek jadi ikut
+        // bisa MENGIRIM chat konseling siswa, padahal mereka bukan
+        // peserta sesi. assertCanChatKonseling() hanya meloloskan siswa
+        // pemilik atau Guru BK pemilik.
+        $this->assertCanChatKonseling($request, $konseling);
 
         if (in_array($konseling->status, ['Dibatalkan', 'Ditolak'], true)) {
             return response()->json(['success' => false, 'message' => 'Konseling sudah dibatalkan'], 403);
+        }
+
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 4): sebelumnya hanya
+        // status Dibatalkan/Ditolak yang diperiksa, sehingga chat bisa
+        // dipakai walau konsultasi belum dikonfirmasi Guru BK (status
+        // 'Menunggu') atau untuk konsultasi Luring (tatap muka langsung,
+        // yang seharusnya tidak butuh chat online). Dua aturan tambahan
+        // berikut menutup celah itu. Urutan pesan error sengaja spesifik
+        // per aturan supaya klien tahu persis alasan penolakan.
+        if (!$konseling->isDaring()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chat hanya tersedia untuk konsultasi Daring',
+            ], 403);
+        }
+        if (!$konseling->isKonfirmasi()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chat hanya tersedia setelah konsultasi dikonfirmasi Guru BK',
+            ], 403);
         }
 
         if (!$konseling->chat_session_id) {
@@ -75,7 +103,11 @@ class ChatController extends Controller
         $user = $request->user();
         $role = $this->currentRole($request);
 
-        // Identitas pengirim diambil dari token, BUKAN dari client
+        // Identitas pengirim diambil dari token, BUKAN dari client.
+        // assertCanChatKonseling() di atas menjamin $role di sini hanya
+        // 'siswa' atau 'guru' (Admin/Kepsek sudah ditolak sebelum sampai
+        // sini), jadi pemetaan sender_type berikut aman dan tidak lagi
+        // bisa mencatat pesan Admin/Kepsek seolah-olah dari 'guru'.
         $senderId = (string) $user->id;
         $senderName = $user->nama ?? $user->username ?? 'User';
         $senderType = $role === 'siswa' ? 'siswa' : 'guru';

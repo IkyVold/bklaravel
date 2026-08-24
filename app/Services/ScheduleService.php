@@ -13,9 +13,22 @@ use App\Models\Konseling;
 class ScheduleService
 {
     /**
+     * PERBAIKAN (revisi 24 Agustus 2026, poin 11): sebelumnya bentrok hanya
+     * dideteksi kalau jam MULAI persis sama (where('jam', $jam)). Kalau
+     * sesi berdurasi 60 menit, sesi jam 10.00 dan sesi jam 10.30 jelas
+     * overlap tapi tidak akan terdeteksi. Sesi tanpa 'durasi_menit' terisi
+     * (data lama, atau jalur yang belum mengirim durasi) dianggap memakai
+     * durasi default ini — sama seperti pola DEFAULT_DURATION_MINUTES yang
+     * sudah dipakai JadwalRutinController untuk slot tanpa jam_selesai.
+     */
+    public const DEFAULT_DURATION_MINUTES = 60;
+
+    /**
      * True jika siswa ATAU guru yang bersangkutan sudah mempunyai konseling
-     * aktif (belum Dibatalkan/Ditolak/Selesai) pada tanggal & jam yang sama.
+     * aktif (belum Dibatalkan/Ditolak/Selesai) pada tanggal yang sama dengan
+     * interval waktu yang overlap terhadap [$jam, $jam + $durasiMenit).
      *
+     * @param  int|null  $durasiMenit  Durasi sesi baru dalam menit. Null → DEFAULT_DURATION_MINUTES.
      * @param  int|null  $excludeId  ID konseling yang sedang diedit (dikecualikan dari cek)
      */
     public function hasConflict(
@@ -24,6 +37,7 @@ class ScheduleService
         ?string $guruBk,
         string $tanggal,
         string $jam,
+        ?int $durasiMenit = null,
         ?int $excludeId = null
     ): bool {
         // PENTING: gunakan whereDate(), bukan where('tanggal', ...). Kolom
@@ -34,8 +48,12 @@ class ScheduleService
         // pernah cocok dengan nilai tersimpan "Y-m-d 00:00:00", sehingga
         // bentrok jadwal tidak pernah terdeteksi. whereDate() membandingkan
         // hanya bagian tanggalnya sehingga aman terhadap format penyimpanan.
+        //
+        // Filter jam TIDAK lagi dilakukan di query ini (lihat poin 11 di
+        // atas) — kandidat yang cocok siswa/guru pada tanggal tsb diambil
+        // semua, lalu overlap interval dihitung di PHP seperti
+        // JadwalRutinController::assertNoOverlap().
         $query = Konseling::whereDate('tanggal', $tanggal)
-            ->where('jam', $jam)
             ->whereNotIn('status', ['Dibatalkan', 'Ditolak', 'Selesai'])
             ->where(function ($q) use ($siswaId, $guruId, $guruBk) {
                 $q->where(function ($qq) use ($siswaId) {
@@ -55,14 +73,34 @@ class ScheduleService
             $query->where('id', '!=', $excludeId);
         }
 
-        return $query->exists();
+        $newStart = strtotime($jam);
+        $newEnd = $newStart + ($durasiMenit ?? self::DEFAULT_DURATION_MINUTES) * 60;
+
+        foreach ($query->get() as $existing) {
+            $existingStart = strtotime((string) $existing->jam);
+            $existingEnd = $existingStart + ($existing->durasi_menit ?? self::DEFAULT_DURATION_MINUTES) * 60;
+
+            // Dua interval overlap jika salah satu mulai sebelum yang lain
+            // berakhir, di kedua arah. Batas persis bersentuhan (mis. sesi A
+            // berakhir 10.00 tepat saat sesi B mulai 10.00) TIDAK dianggap
+            // bentrok — dibuat strict (<) supaya sesi back-to-back tetap
+            // bisa dijadwalkan.
+            if ($newStart < $existingEnd && $existingStart < $newEnd) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
      * Sama seperti hasConflict(), tapi langsung menerima instance Konseling
-     * (dipakai saat konfirmasi/reschedule — otomatis exclude dirinya sendiri).
+     * (dipakai saat konfirmasi/reschedule — otomatis exclude dirinya
+     * sendiri). Durasi default memakai durasi tersimpan pada $row kecuali
+     * $durasiMenit diberikan eksplisit (mis. saat konfirmasi sekaligus
+     * mengubah durasi sesi).
      */
-    public function hasConflictFor(Konseling $row, string $tanggal, string $jam): bool
+    public function hasConflictFor(Konseling $row, string $tanggal, string $jam, ?int $durasiMenit = null): bool
     {
         return $this->hasConflict(
             $row->siswa_id,
@@ -70,6 +108,7 @@ class ScheduleService
             $row->guru_bk,
             $tanggal,
             $jam,
+            $durasiMenit ?? $row->durasi_menit,
             $row->id
         );
     }

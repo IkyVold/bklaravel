@@ -57,10 +57,16 @@ class ChatOwnershipTest extends TestCase
         $siswa = Siswa::factory()->create();
         $guru = GuruBk::factory()->create();
 
+        // jenis Daring + sudah dikonfirmasi: prasyarat chat sejak revisi
+        // 24 Agustus 2026 poin 4 (lihat ChatEligibilityTest untuk kasus
+        // Luring/belum dikonfirmasi).
         $row = Konseling::factory()->create([
             'siswa_id' => $siswa->id,
             'guru_id' => $guru->id,
             'guru_bk' => $guru->nama,
+            'jenis' => 'Daring',
+            'status' => 'Proses',
+            'status_konfirmasi' => 'Dikonfirmasi',
         ]);
 
         Sanctum::actingAs($siswa, ['siswa']);

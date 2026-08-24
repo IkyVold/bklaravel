@@ -70,19 +70,24 @@ class SiswaController extends Controller
 
     public function store(Request $request)
     {
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' SENGAJA
+        // dihapus dari rules. Dulu Guru BK bisa mengisi password custom
+        // saat menambah siswa baru lewat form ini — sekarang password
+        // SELALU di-set = NIS saat pembuatan, sama seperti jalur
+        // import (upsertSiswa()). Guru BK tidak lagi bisa menentukan atau
+        // mengubah password siswa lewat rute mana pun di bawah role:guru;
+        // reset password siswa hanya lewat Admin atau siswa itu sendiri
+        // (lihat Api/ProfileController, poin 1).
         $data = $request->validate([
             'nis' => 'required|string|max:20|unique:siswa,nis',
             'nama' => 'required|string|max:100',
             'kelas' => 'required|string|max:20',
-            'password' => 'nullable|string|min:4',
             'jenis_kelamin' => 'nullable|in:Laki-laki,Perempuan',
         ]);
         if (!in_array($data['kelas'], self::VALID_KELAS, true)) {
             return back()->withInput()->withErrors(['kelas' => 'Kelas tidak valid']);
         }
-        if (empty($data['password'])) {
-            $data['password'] = $data['nis'];
-        }
+        $data['password'] = $data['nis'];
         $data['jenis_kelamin'] = $this->normalizeJk($data['jenis_kelamin'] ?? null);
         Siswa::create($data);
 
@@ -101,16 +106,19 @@ class SiswaController extends Controller
     public function update(Request $request, int $id)
     {
         $siswa = Siswa::findOrFail($id);
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' SENGAJA
+        // dihapus dari rules — sebelumnya Guru BK bisa reset password
+        // siswa mana pun lewat form edit data master ini, celah yang
+        // sama persis dengan yang sudah ditutup di Api/ProfileController
+        // (poin 1). Guru BK di sini hanya boleh mengubah data
+        // administratif (nama/NIS/kelas/jenis kelamin), tidak pernah
+        // password.
         $data = $request->validate([
             'nis' => 'required|string|max:20|unique:siswa,nis,' . $id,
             'nama' => 'required|string|max:100',
             'kelas' => 'required|string|max:20',
-            'password' => 'nullable|string|min:4',
             'jenis_kelamin' => 'nullable|in:Laki-laki,Perempuan',
         ]);
-        if (empty($data['password'])) {
-            unset($data['password']);
-        }
         $data['jenis_kelamin'] = $this->normalizeJk($data['jenis_kelamin'] ?? null);
         $siswa->update($data);
         return redirect()->route('guru.siswa.index')->with('success', 'Data siswa diperbarui.');
