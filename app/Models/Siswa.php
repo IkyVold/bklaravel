@@ -16,7 +16,7 @@ class Siswa extends Authenticatable
     protected $fillable = [
         'nis', 'nama', 'kelas', 'password', 'jenis_kelamin',
         'tanggal_lahir', 'alamat', 'no_telepon', 'foto_profile',
-        'failed_login_attempts', 'locked_until',
+        'failed_login_attempts', 'locked_until', 'must_change_password',
     ];
 
     protected $hidden = ['password'];
@@ -25,6 +25,7 @@ class Siswa extends Authenticatable
         'tanggal_lahir' => 'date',
         'locked_until' => 'datetime',
         'failed_login_attempts' => 'integer',
+        'must_change_password' => 'boolean',
     ];
 
     public function getAuthIdentifierName(): string

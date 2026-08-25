@@ -88,6 +88,10 @@ class SiswaController extends Controller
             return back()->withInput()->withErrors(['kelas' => 'Kelas tidak valid']);
         }
         $data['password'] = $data['nis'];
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): password awal siswa
+        // di jalur ini selalu = NIS dan ditentukan Guru BK, bukan siswa
+        // sendiri — wajib diganti saat login pertama.
+        $data['must_change_password'] = true;
         $data['jenis_kelamin'] = $this->normalizeJk($data['jenis_kelamin'] ?? null);
         Siswa::create($data);
 
@@ -397,6 +401,10 @@ class SiswaController extends Controller
             'kelas' => $kelas,
             'jenis_kelamin' => $jk,
             'password' => $nis,
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): sama seperti
+            // store() di atas — password default = NIS wajib diganti saat
+            // login pertama.
+            'must_change_password' => true,
         ]);
         return 'inserted';
     }

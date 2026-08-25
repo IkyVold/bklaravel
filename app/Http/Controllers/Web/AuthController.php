@@ -104,8 +104,17 @@ class AuthController extends Controller
             'nama' => $siswa->nama,
             'kelas' => $siswa->kelas,
             'foto' => $siswa->foto_profile,
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): disimpan di
+            // session supaya RoleAuth middleware bisa memeriksanya tanpa
+            // query DB tambahan di setiap request.
+            'must_change_password' => (bool) $siswa->must_change_password,
         ]);
         Session::regenerate();
+
+        if ($siswa->must_change_password) {
+            return redirect()->route('siswa.profil')
+                ->with('error', 'Ini pertama kali Anda login (atau password Anda baru direset). Silakan ganti password default Anda terlebih dahulu.');
+        }
 
         return redirect()->route('siswa.dashboard');
     }

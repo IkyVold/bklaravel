@@ -30,7 +30,18 @@ class ChatController extends Controller
         if (!$konseling) {
             return response()->json(['success' => false, 'message' => 'Konseling tidak ditemukan'], 404);
         }
-        $this->assertCanViewKonseling($request, $konseling);
+
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 2): dulu di sini dipakai
+        // assertCanViewKonseling(), yang SENGAJA meloloskan Admin & Kepsek
+        // untuk keperluan monitoring data administratif konseling.
+        // Isi chat BUKAN data administratif — ia bagian dari isi
+        // konsultasi yang menurut UI siswa hanya boleh dilihat siswa dan
+        // Guru BK yang dipilih. Akibatnya sebelumnya Admin/Kepsek yang
+        // sudah tidak bisa MENGIRIM pesan (lihat ChatController@send)
+        // tetap bisa MEMBACA seluruh riwayat chat lewat endpoint ini.
+        // assertCanReadChatKonseling() hanya meloloskan siswa pemilik dan
+        // Guru BK pemilik — sama seperti hak mengirim pesan.
+        $this->assertCanReadChatKonseling($request, $konseling);
 
         if (!$konseling->chat_session_id) {
             return response()->json(['success' => true, 'data' => []]);

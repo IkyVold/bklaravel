@@ -21,9 +21,11 @@ class AkunController extends Controller
 
     public function guruStore(Request $request)
     {
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
+        // min:8 — disamakan dengan Api/AkunController::createGuru().
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:guru_bk,username',
-            'password' => 'required|string|min:4',
+            'password' => 'required|string|min:8',
             'nama' => 'required|string|max:100',
             'spesialisasi' => 'nullable|string|max:100',
             'npsn' => 'nullable|string|max:30',
@@ -42,9 +44,12 @@ class AkunController extends Controller
     public function guruUpdate(Request $request, int $id)
     {
         $row = GuruBk::findOrFail($id);
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
+        // min:8 pada update juga, supaya tidak jadi celah untuk melewati
+        // aturan min:8 yang sudah dipasang di guruStore().
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:guru_bk,username,' . $id,
-            'password' => 'nullable|string|min:4',
+            'password' => 'nullable|string|min:8',
             'nama' => 'required|string|max:100',
             'spesialisasi' => 'nullable|string|max:100',
             'npsn' => 'nullable|string|max:30',
@@ -88,9 +93,11 @@ class AkunController extends Controller
 
     public function kepsekStore(Request $request)
     {
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
+        // min:8 — disamakan dengan akun Guru BK.
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:kepsek,username',
-            'password' => 'required|string|min:4',
+            'password' => 'required|string|min:8',
             'nama' => 'required|string|max:100',
             'npsn' => 'nullable|string|max:30',
         ]);
@@ -107,9 +114,11 @@ class AkunController extends Controller
     public function kepsekUpdate(Request $request, int $id)
     {
         $row = Kepsek::findOrFail($id);
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
+        // min:8 pada update juga — sama seperti guruUpdate().
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:kepsek,username,' . $id,
-            'password' => 'nullable|string|min:4',
+            'password' => 'nullable|string|min:8',
             'nama' => 'required|string|max:100',
             'npsn' => 'nullable|string|max:30',
             'is_active' => 'nullable|boolean',

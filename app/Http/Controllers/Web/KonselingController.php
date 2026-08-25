@@ -407,26 +407,42 @@ class KonselingController extends Controller
             return back()->with('error', 'Hanya pengajuan berstatus Menunggu yang dapat dikonfirmasi.');
         }
 
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 9): dulu status_konfirmasi
+        // di sini cuma divalidasi 'nullable|string|max:30' — nilai bebas apa
+        // pun bisa dikirim client. Server kemudian hanya menangani secara
+        // khusus 'Dikonfirmasi'/'Tervalidasi' (dinormalisasi jadi
+        // 'Terkonfirmasi') dan selain itu dipakai APA ADANYA sebagai
+        // status_konfirmasi, sementara $row->status tetap dipaksa 'Proses'
+        // tanpa syarat. Kalau field dimanipulasi jadi nilai lain (mis.
+        // "Ditolak"), state ganjil status=Proses & status_konfirmasi=Ditolak
+        // bisa terbentuk — backend tidak boleh bergantung pada UI yang tidak
+        // pernah mengirim nilai itu. Form konfirmasi web ini HANYA untuk aksi
+        // konfirmasi, jadi nilainya dikunci ke satu-satunya pilihan yang sah:
+        // 'Terkonfirmasi'. Penolakan/pembatalan pakai proses tersendiri
+        // (lihat batalGuru()), bukan lewat form ini.
         $data = $request->validate([
             'tanggal_konfirmasi' => 'required|date',
             'jam_konfirmasi' => 'required|string|max:10',
-            'status_konfirmasi' => 'nullable|string|max:30',
+            'status_konfirmasi' => ['nullable', Rule::in(['Terkonfirmasi'])],
         ], [
             'tanggal_konfirmasi.required' => 'Tanggal konfirmasi wajib diisi.',
             'jam_konfirmasi.required' => 'Jam konfirmasi wajib diisi.',
+            'status_konfirmasi.in' => 'Nilai status konfirmasi tidak valid.',
         ]);
 
-        $konfirmasi = $data['status_konfirmasi'] ?? 'Terkonfirmasi';
-        if (in_array($konfirmasi, ['Dikonfirmasi', 'Tervalidasi'], true)) {
-            $konfirmasi = 'Terkonfirmasi';
-        }
+        // Field ini sekarang hanya bisa null (default) atau 'Terkonfirmasi'
+        // (lolos Rule::in di atas) — normalisasi Dikonfirmasi/Tervalidasi
+        // yang lama tidak diperlukan lagi karena nilai lain sudah ditolak
+        // Validator sebelum sampai ke sini.
+        $konfirmasi = 'Terkonfirmasi';
 
-        if ($konfirmasi === 'Terkonfirmasi') {
-            // Cek konflik jadwal — sama seperti API, memakai tanggal/jam
-            // baru yang dipilih Guru BK saat konfirmasi.
-            if ($this->schedule->hasConflictFor($row, $data['tanggal_konfirmasi'], $data['jam_konfirmasi'])) {
-                return back()->withInput()->with('error', 'Jadwal bentrok. Guru BK atau siswa sudah memiliki konseling lain di tanggal/jam tersebut.');
-            }
+        // Cek konflik jadwal — sama seperti API, memakai tanggal/jam
+        // baru yang dipilih Guru BK saat konfirmasi. Dulu dibungkus
+        // "if ($konfirmasi === 'Terkonfirmasi')" karena $konfirmasi bisa
+        // bernilai lain; sekarang $konfirmasi SELALU 'Terkonfirmasi' (lihat
+        // di atas), jadi pengecekan bentrok berlaku tanpa syarat.
+        if ($this->schedule->hasConflictFor($row, $data['tanggal_konfirmasi'], $data['jam_konfirmasi'])) {
+            return back()->withInput()->with('error', 'Jadwal bentrok. Guru BK atau siswa sudah memiliki konseling lain di tanggal/jam tersebut.');
         }
 
         $row->status_konfirmasi = $konfirmasi;
@@ -447,7 +463,7 @@ class KonselingController extends Controller
                     (string) $row->siswa->nis,
                     'siswa',
                     'Jadwal Konseling Dikonfirmasi',
-                    'Pengajuan konseling Anda dikonfirmasi: ' . ($data['status_konfirmasi'] ?? ''),
+                    'Pengajuan konseling Anda dikonfirmasi: ' . $konfirmasi,
                     'konseling',
                     $row->id,
                 );

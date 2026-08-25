@@ -53,6 +53,17 @@ class ScheduleService
         // atas) — kandidat yang cocok siswa/guru pada tanggal tsb diambil
         // semua, lalu overlap interval dihitung di PHP seperti
         // JadwalRutinController::assertNoOverlap().
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 8): dulu filter guru di
+        // sini pakai OR independen (guru_id COCOK ATAU guru_bk COCOK NAMA),
+        // persis pola bug yang sama dengan listByGuru() (poin 7) dan
+        // ownership check lama (poin 24 Agustus, poin 8) — kalau ada dua
+        // Guru BK dengan nama sama persis, jadwal Guru A bisa dianggap
+        // bentrok dengan jadwal Guru B hanya karena namanya sama, padahal
+        // guru_id keduanya berbeda. Sekarang begitu $guruId diberikan, itu
+        // SATU-SATUNYA sumber kebenaran untuk mencocokkan guru; fallback
+        // nama HANYA dipakai untuk mencocokkan baris lama yang guru_id-nya
+        // memang null (data sebelum kolom guru_id ada) — konsisten dengan
+        // guruOwnsKonseling() di AuthorizesBk.
         $query = Konseling::whereDate('tanggal', $tanggal)
             ->whereNotIn('status', ['Dibatalkan', 'Ditolak', 'Selesai'])
             ->where(function ($q) use ($siswaId, $guruId, $guruBk) {
@@ -63,9 +74,16 @@ class ScheduleService
                 });
                 if ($guruId) {
                     $q->orWhere('guru_id', $guruId);
-                }
-                if ($guruBk) {
-                    $q->orWhere('guru_bk', $guruBk);
+                    if ($guruBk) {
+                        $q->orWhere(function ($qg) use ($guruBk) {
+                            $qg->whereNull('guru_id')->where('guru_bk', $guruBk);
+                        });
+                    }
+                } elseif ($guruBk) {
+                    // Tidak ada guruId sama sekali — hanya kasus data lama.
+                    $q->orWhere(function ($qg) use ($guruBk) {
+                        $qg->whereNull('guru_id')->where('guru_bk', $guruBk);
+                    });
                 }
             });
 

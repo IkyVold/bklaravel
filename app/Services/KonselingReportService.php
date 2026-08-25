@@ -47,6 +47,30 @@ class KonselingReportService
     {
         $hasLaporan = !empty($row->laporan_created_at) || !empty($row->laporan_kesimpulan);
 
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 6): sebelumnya kewajiban
+        // sesi lanjutan untuk status Monitoring hanya diperiksa/ dibuat
+        // ketika !$hasLaporan (laporan PERTAMA). Akibatnya, laporan awal
+        // dengan status penanganan Selesai lalu diedit (dalam window 72
+        // jam) menjadi Monitoring tidak pernah lolos validasi wajib sesi
+        // lanjutan DAN tidak pernah membuat sesi lanjutan — karena
+        // $hasLaporan sudah true. Bisa terbentuk status_penanganan =
+        // Monitoring tanpa sesi lanjutan sama sekali.
+        //
+        // Sekarang yang menentukan wajib/tidaknya sesi lanjutan bukan lagi
+        // "apakah ini laporan pertama", melainkan "apakah konseling ini
+        // SUDAH punya sesi lanjutan (child)". child ditandai lewat kolom
+        // pengajuan_sebelumnya_id yang menunjuk ke $row->id (lihat
+        // buatSesiLanjutan()). Jadi:
+        //  - Laporan pertama, status Monitoring → wajib buat sesi lanjutan
+        //    (seperti sebelumnya, karena belum ada child).
+        //  - Edit laporan yang MENGUBAH status jadi Monitoring dan BELUM
+        //    punya child → tetap wajib mengisi & membuat sesi lanjutan.
+        //  - Edit laporan yang statusnya sudah Monitoring dan child SUDAH
+        //    ada (dibuat sebelumnya) → tidak diminta lagi / tidak dibuat
+        //    duplikat.
+        $hasChildLanjutan = Schema::hasColumn('konseling', 'pengajuan_sebelumnya_id')
+            && Konseling::where('pengajuan_sebelumnya_id', $row->id)->exists();
+
         // --- Semua validasi business rule dilakukan SEBELUM ada perubahan
         // apa pun ke database, supaya tidak ada state setengah-tersimpan. ---
 
@@ -75,20 +99,20 @@ class KonselingReportService
             }
         }
 
-        // Sesi lanjutan wajib tanggal & jam kalau status penanganan Monitoring.
-        // Ini aturan inti yang hilang di jalur API sebelumnya (poin 5).
+        // Sesi lanjutan wajib tanggal & jam kalau status penanganan Monitoring
+        // dan belum ada sesi lanjutan (child) untuk konseling ini.
         $statusPenanganan = $data['laporan_status_penanganan'] ?? $row->laporan_status_penanganan;
         $buatLanjutan = !empty($data['buat_lanjutan']) || $statusPenanganan === 'Monitoring';
         $lanjutanLengkap = !empty($data['lanjutan_tanggal']) && !empty($data['lanjutan_jam']);
 
-        if ($statusPenanganan === 'Monitoring' && !$hasLaporan && !$lanjutanLengkap) {
+        if ($statusPenanganan === 'Monitoring' && !$hasChildLanjutan && !$lanjutanLengkap) {
             throw new \RuntimeException('Status Monitoring: isi tanggal & jam sesi lanjutan.');
         }
 
         // --- Semua valid. Simpan laporan, ubah status, buat sesi lanjutan,
         // dan notifikasi dalam satu transaksi — gagal satu, rollback semua. ---
 
-        return DB::transaction(function () use ($row, $data, $hasLaporan, $buatLanjutan, $lanjutanLengkap, $namaPembuatLaporan) {
+        return DB::transaction(function () use ($row, $data, $hasLaporan, $hasChildLanjutan, $buatLanjutan, $lanjutanLengkap, $namaPembuatLaporan) {
             $row->laporan_kesimpulan = $data['laporan_kesimpulan'] ?? $row->laporan_kesimpulan;
             $row->laporan_rekomendasi = $data['laporan_rekomendasi'] ?? $row->laporan_rekomendasi;
             $row->laporan_status_penanganan = $data['laporan_status_penanganan'] ?? $row->laporan_status_penanganan;
@@ -107,7 +131,7 @@ class KonselingReportService
                 $msg = 'Laporan disimpan & konseling diselesaikan.';
             }
 
-            if ($buatLanjutan && $lanjutanLengkap && !$hasLaporan) {
+            if ($buatLanjutan && $lanjutanLengkap && !$hasChildLanjutan) {
                 $this->buatSesiLanjutan($row, $data);
                 $msg .= ' Sesi lanjutan telah dibuat.';
             }

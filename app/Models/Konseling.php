@@ -96,9 +96,18 @@ class Konseling extends Model
      * rahasia. Yang SENGAJA tidak disertakan: deskripsi, laporan_kesimpulan,
      * laporan_rekomendasi, laporan_catatan_tambahan, catatan_walkin.
      *
-     * Admin, Guru BK pemilik, dan siswa pemilik TIDAK memakai method ini —
-     * mereka tetap menerima data lengkap seperti sebelumnya, karena hanya
-     * Kepsek yang disebut dalam klaim kerahasiaan di atas.
+     * PERBAIKAN (revisi 25 Agustus 2026, poin 3): dulu di sini tertulis
+     * "Admin ... TIDAK memakai method ini — tetap menerima data lengkap",
+     * dengan alasan hanya Kepsek yang disebut eksplisit dalam klaim
+     * kerahasiaan UI. Tapi UI (resources/views/siswa/konseling-pilih.blade.php)
+     * menjanjikan isi konsultasi hanya untuk siswa & Guru BK yang dipilih —
+     * tidak mengecualikan Admin. Kalau Admin dianggap administrator
+     * teknis/sistem (bukan bagian dari sesi konseling), tidak ada alasan
+     * bisnis bagi Admin membaca substansi kasus. Sekarang endpoint API
+     * (lihat Api/KonselingController::getDetail()/listAll()/listBySiswa())
+     * memakai method ini untuk Admin JUGA, bukan hanya Kepsek. Guru BK
+     * pemilik dan siswa pemilik TIDAK memakai method ini — mereka tetap
+     * menerima data lengkap, karena merekalah peserta sesi yang sebenarnya.
      */
     public function untukMonitoringKepsek(): array
     {

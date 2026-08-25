@@ -21,7 +21,14 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
 
-Route::middleware('auth:sanctum')->group(function () {
+// PERBAIKAN (revisi 25 Agustus 2026, poin 11): 'password.changed' dipasang
+// di level grup supaya berlaku untuk SELURUH endpoint API yang butuh
+// autentikasi. Middleware ini hanya benar-benar bertindak kalau
+// pengguna adalah Siswa dengan must_change_password = true — Guru BK/
+// Kepsek/Admin selalu lolos tanpa terpengaruh (lihat
+// App\Http\Middleware\EnsurePasswordChanged untuk detail & daftar
+// endpoint yang dikecualikan untuk siswa).
+Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     // PERBAIKAN (revisi 24 Agustus 2026, poin 9): '/logout' dulu berada DI
     // LUAR grup 'auth:sanctum'. AuthController::logout() memanggil
     // $request->user()?->currentAccessToken()?->delete() — tapi tanpa
@@ -86,7 +93,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/konseling-bk', [KonselingController::class, 'listByGuru']);
     Route::get('/konseling/detail/{id}', [KonselingController::class, 'getDetail']);
     Route::get('/konseling/{nis}', [KonselingController::class, 'listBySiswa']);
-    Route::post('/konseling', [KonselingController::class, 'store']);
+    // PERBAIKAN (revisi 25 Agustus 2026, poin 4): dulu POST /api/konseling
+    // tidak punya middleware 'ability' sama sekali dan hanya bergantung
+    // pada assertSiswaOwns() di controller — yang justru SENGAJA
+    // meloloskan seluruh staff (Guru BK, Kepsek, Admin) untuk keperluan
+    // ownership check di endpoint LAIN. Akibatnya Guru BK/Kepsek/Admin
+    // bisa mengajukan konsultasi reguler atas nama siswa mana pun lewat
+    // endpoint ini, padahal Guru BK sudah punya endpoint khusus
+    // (/api/konseling/walkin) dan Kepsek/Admin tidak punya alasan bisnis
+    // untuk mengajukan konsultasi. Sekarang dikunci 'ability:siswa' di
+    // level route (pertahanan pertama) DAN di controller store() (lihat
+    // komentar di dalamnya untuk pertahanan kedua).
+    Route::middleware('ability:siswa')->post('/konseling', [KonselingController::class, 'store']);
     Route::post('/konseling/walkin', [KonselingController::class, 'walkin']);
     Route::put('/konseling/{id}/konfirmasi', [KonselingController::class, 'konfirmasi']);
     Route::put('/konseling/{id}/laporan', [KonselingController::class, 'laporan']);

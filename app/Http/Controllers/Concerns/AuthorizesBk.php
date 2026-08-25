@@ -107,6 +107,15 @@ trait AuthorizesBk
      * ChatController@send salah memakai fungsi ini, sehingga Admin/Kepsek
      * yang seharusnya cuma boleh MELIHAT ikut bisa MENGIRIM pesan chat
      * konseling (revisi 24 Agustus 2026, poin 2).
+     *
+     * CATATAN (revisi 25 Agustus 2026, poin 3): fungsi ini hanya gerbang
+     * OTORISASI (boleh akses endpoint atau tidak) — bukan penentu FIELD
+     * apa saja yang dikembalikan. Untuk data konseling itu sendiri, Admin
+     * & Kepsek yang lolos di sini tetap disaring lebih lanjut di
+     * controller (lihat Konseling::untukMonitoringKepsek() dan
+     * pemakaiannya di getDetail()/listAll()/listBySiswa()) supaya isi
+     * konsultasi (deskripsi/kesimpulan/rekomendasi/catatan) hanya
+     * diterima siswa & Guru BK yang bersangkutan, bukan Admin/Kepsek.
      */
     protected function assertCanViewKonseling(Request $request, $konseling): void
     {
@@ -145,6 +154,30 @@ trait AuthorizesBk
             }
         }
         abort(response()->json(['success' => false, 'message' => 'Akses ditolak'], 403));
+    }
+
+    /**
+     * Hak MEMBACA isi/riwayat chat konseling. BEDA dengan
+     * assertCanViewKonseling(): assertCanViewKonseling() sengaja
+     * meloloskan Admin & Kepsek untuk keperluan monitoring data
+     * administratif konseling (jadwal, status, dsb) — tapi ISI CHAT
+     * adalah bagian dari isi konsultasi yang menurut halaman
+     * siswa/konseling-pilih.blade.php hanya boleh dilihat siswa dan
+     * Guru BK yang dipilih.
+     *
+     * PERBAIKAN (revisi 25 Agustus 2026, poin 2): sebelumnya
+     * ChatController@history memakai assertCanViewKonseling(), sehingga
+     * walau Admin/Kepsek sudah tidak bisa MENGIRIM pesan (lihat
+     * assertCanChatKonseling(), revisi 24 Agustus 2026 poin 2), mereka
+     * tetap bisa MEMBACA seluruh isi chat lewat endpoint history.
+     * Aturannya sama persis dengan assertCanChatKonseling() (hanya
+     * siswa pemilik & Guru BK pemilik) — dibuat sebagai fungsi terpisah
+     * supaya namanya tetap jelas menggambarkan maksud pemanggilan di
+     * setiap controller (baca vs kirim), bukan karena aturannya beda.
+     */
+    protected function assertCanReadChatKonseling(Request $request, $konseling): void
+    {
+        $this->assertCanChatKonseling($request, $konseling);
     }
 
     /**

@@ -55,6 +55,12 @@
             </div>
         </div>
 
+        <?php if($mustChangePassword ?? false): ?>
+            <div class="alert alert-error" style="margin-bottom:16px">
+                🔒 Anda wajib mengganti password default sebelum dapat mengakses halaman lain. Klik "Edit" pada baris Password di bawah, lalu masukkan password Anda saat ini (password default/lama) sebelum menentukan password baru.
+            </div>
+        <?php endif; ?>
+
         <div class="profile-grid">
             
             <div class="card identity-card">
@@ -160,6 +166,13 @@
                         </div>
                     </div>
                     <div class="info-row">
+                        <div class="info-label">Password</div>
+                        <div class="info-value">••••••••</div>
+                        <div>
+                            <button type="button" class="edit-btn" data-field="password" data-label="Password" data-value="">Edit</button>
+                        </div>
+                    </div>
+                    <div class="info-row">
                         <div class="info-label">Terdaftar Sejak</div>
                         <div class="info-value"><?php echo e($terdaftar); ?></div>
                         <div></div>
@@ -176,10 +189,10 @@
             </div>
         </div>
     </main>
-</div>
 
-
-<div class="modal" id="editModal">
+    
+    
+    <div class="modal" id="editModal">
     <div class="modal-content">
         <div class="modal-header">
             <h3 id="modalTitle">Edit</h3>
@@ -210,12 +223,22 @@
                     <label>No. Telepon</label>
                     <input type="text" name="edit_value" id="inputTelepon" maxlength="30">
                 </div>
+                <div class="modal-field" id="fieldPassword" style="display:none">
+                    
+                    <label>Password Saat Ini</label>
+                    <input type="password" name="current_password" id="inputCurrentPassword" autocomplete="current-password">
+                    <label style="margin-top:10px;display:block">Password Baru</label>
+                    <input type="password" name="edit_value" id="inputPassword" minlength="6" autocomplete="new-password">
+                    <label style="margin-top:10px;display:block">Konfirmasi Password Baru</label>
+                    <input type="password" name="edit_value_confirmation" id="inputPasswordConfirm" minlength="6" autocomplete="new-password">
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-ghost" id="modalCancel">Batal</button>
                 <button type="submit" class="btn btn-primary">Simpan</button>
             </div>
         </form>
+    </div>
     </div>
 </div>
 <?php $__env->stopSection(); ?>
@@ -253,13 +276,26 @@
         jenis_kelamin: document.getElementById('fieldJenis'),
         tanggal_lahir: document.getElementById('fieldTanggal'),
         alamat: document.getElementById('fieldAlamat'),
-        no_telepon: document.getElementById('fieldTelepon')
+        no_telepon: document.getElementById('fieldTelepon'),
+        password: document.getElementById('fieldPassword')
     };
     var inputs = {
-        jenis_kelamin: document.getElementById('inputJenis'),
-        tanggal_lahir: document.getElementById('inputTanggal'),
-        alamat: document.getElementById('inputAlamat'),
-        no_telepon: document.getElementById('inputTelepon')
+        jenis_kelamin: [document.getElementById('inputJenis')],
+        tanggal_lahir: [document.getElementById('inputTanggal')],
+        alamat: [document.getElementById('inputAlamat')],
+        no_telepon: [document.getElementById('inputTelepon')],
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 13): inputCurrentPassword
+        // ditambahkan di sini juga, supaya ikut logika enable/disable +
+        // name yang sama seperti input lain — kalau bukan field password
+        // yang aktif, atribut name-nya dilepas agar tidak ikut terkirim.
+        password: [document.getElementById('inputCurrentPassword'), document.getElementById('inputPassword'), document.getElementById('inputPasswordConfirm')]
+    };
+    var inputNames = {
+        jenis_kelamin: ['edit_value'],
+        tanggal_lahir: ['edit_value'],
+        alamat: ['edit_value'],
+        no_telepon: ['edit_value'],
+        password: ['current_password', 'edit_value', 'edit_value_confirmation']
     };
 
     function openModal(field, label, value) {
@@ -267,18 +303,22 @@
         document.getElementById('editField').value = field;
         Object.keys(fields).forEach(function (k) {
             fields[k].style.display = 'none';
-            // disable other inputs so only one edit_value posts
-            var el = inputs[k];
-            if (el) el.disabled = true;
-            if (el && el.name) el.removeAttribute('name');
+            // disable other inputs so only the active field's inputs post
+            inputs[k].forEach(function (el) {
+                if (!el) return;
+                el.disabled = true;
+                el.removeAttribute('name');
+            });
         });
         fields[field].style.display = 'block';
-        var active = inputs[field];
-        if (active) {
-            active.disabled = false;
-            active.name = 'edit_value';
-            active.value = value || '';
-        }
+        var activeInputs = inputs[field];
+        var activeNames = inputNames[field];
+        activeInputs.forEach(function (el, i) {
+            if (!el) return;
+            el.disabled = false;
+            el.name = activeNames[i];
+            el.value = (i === 0) ? (value || '') : '';
+        });
         modal.classList.add('show');
     }
     function closeModal() {
@@ -295,6 +335,13 @@
     modal.addEventListener('click', function (e) {
         if (e.target === modal) closeModal();
     });
+
+    <?php if($mustChangePassword ?? false): ?>
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): buka langsung modal
+        // ganti password supaya siswa tidak perlu mencari-cari tombol Edit
+        // saat wajib mengganti password default.
+        openModal('password', 'Password', '');
+    <?php endif; ?>
 })();
 </script>
 <?php $__env->stopPush(); ?>

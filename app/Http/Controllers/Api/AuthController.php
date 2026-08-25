@@ -97,6 +97,12 @@ class AuthController extends Controller
             'success' => true,
             'token' => $token,
             'role' => 'siswa',
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): frontend perlu
+            // tahu di respons login ini kalau siswa wajib mengganti
+            // password default sebelum bisa memakai fitur lain — endpoint
+            // lain akan menolak (423) lewat EnsurePasswordChanged middleware
+            // selama flag ini masih true.
+            'must_change_password' => (bool) $siswa->must_change_password,
             'user' => [
                 'id' => $siswa->id,
                 'nis' => $siswa->nis,

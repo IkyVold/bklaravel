@@ -42,18 +42,66 @@ class KonselingController extends Controller
         'Ditolak'  => [],
     ];
 
+    /**
+     * Nilai status_konfirmasi yang dianggap "sudah dikonfirmasi". Disamakan
+     * persis dengan Web/KonselingController@batalGuru — lihat PERBAIKAN
+     * (revisi 25 Agustus 2026, poin 5) di updateStatus() di bawah.
+     */
+    private const CONFIRMED_STATUSES = ['Terkonfirmasi', 'Dikonfirmasi', 'Tervalidasi'];
+
     public function listBySiswa(Request $request, string $nis): JsonResponse
     {
-        $this->assertSiswaOwnsNis($request, $nis);
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 1): dulu di sini hanya
+        // dipakai assertSiswaOwnsNis(), yang meloloskan SELURUH staff
+        // (Guru BK, Kepsek, Admin) tanpa pembatasan lebih lanjut, lalu
+        // query di bawahnya mengembalikan SEMUA konseling siswa tsb apa
+        // adanya. Akibatnya:
+        //  - Guru BK A bisa memanggil endpoint ini dan memperoleh
+        //    konsultasi siswa dengan Guru BK B (bukan hanya miliknya).
+        //  - Kepsek/Admin memperoleh data lengkap (deskripsi/kesimpulan/dst),
+        //    melewati sanitasi yang sudah diterapkan di listAll()/getDetail()
+        //    lewat Konseling::untukMonitoringKepsek().
+        // Sekarang: siswa tetap pakai ownership NIS; Guru BK hanya
+        // mendapat baris miliknya sendiri (guru_id match, dengan fallback
+        // nama HANYA untuk data lama guru_id null — konsisten dengan
+        // guruOwnsKonseling() di AuthorizesBk); Kepsek & Admin (poin 3)
+        // disaring lewat untukMonitoringKepsek() seperti endpoint lain.
+        if ($this->isSiswa($request)) {
+            $this->assertSiswaOwnsNis($request, $nis);
+        } elseif (!$this->isStaff($request)) {
+            return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
+        }
 
         $siswa = Siswa::where('nis', $nis)->first();
         if (!$siswa) {
             return response()->json(['success' => false, 'message' => 'Siswa tidak ditemukan'], 404);
         }
 
-        $rows = Konseling::where('siswa_id', $siswa->id)
-            ->orderByDesc('created_at')
-            ->get();
+        $query = Konseling::where('siswa_id', $siswa->id);
+
+        if ($this->isGuru($request)) {
+            $user = $request->user();
+            $nama = $user->nama ?? '';
+            $query->where(function ($q) use ($user, $nama) {
+                $q->where('guru_id', $user->id)
+                  ->orWhere(function ($qq) use ($nama) {
+                      $qq->whereNull('guru_id')
+                         ->where('guru_bk', $nama);
+                  });
+            });
+        }
+
+        $rows = $query->orderByDesc('created_at')->get();
+
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 3): Admin disertakan di
+        // sini juga (dulu hanya Kepsek) — lihat penjelasan lengkap di
+        // getDetail() dan Konseling::untukMonitoringKepsek().
+        if ($this->isKepsek($request) || $this->isAdmin($request)) {
+            return response()->json([
+                'success' => true,
+                'data' => $rows->map->untukMonitoringKepsek()->values(),
+            ]);
+        }
 
         return response()->json(['success' => true, 'data' => $rows]);
     }
@@ -68,10 +116,24 @@ class KonselingController extends Controller
         $q = Konseling::with('siswa:id,nis,nama,kelas')->orderByDesc('created_at');
 
         if ($this->isGuru($request)) {
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 7): dulu di sini
+            // masih pakai OR independen (guru_id COCOK ATAU nama COCOK),
+            // walau konseling sudah punya guru_id yang menunjuk Guru BK
+            // tertentu. Kalau ada dua Guru BK dengan nama sama persis,
+            // Guru B bisa memperoleh record milik Guru A lewat daftar ini
+            // hanya karena namanya kebetulan sama — padahal authorization
+            // individual (guruOwnsKonseling() di AuthorizesBk) dan
+            // listBySiswa() (poin 1) sudah diperbaiki memakai pola yang
+            // benar. Sekarang disamakan: begitu konseling punya guru_id,
+            // itu SATU-SATUNYA sumber kebenaran; fallback nama HANYA
+            // dipakai untuk data lama yang guru_id-nya null.
             $nama = $user->nama ?? '';
             $q->where(function ($qq) use ($user, $nama) {
                 $qq->where('guru_id', $user->id)
-                   ->orWhere('guru_bk', $nama);
+                   ->orWhere(function ($qqq) use ($nama) {
+                       $qqq->whereNull('guru_id')
+                           ->where('guru_bk', $nama);
+                   });
             });
         }
 
@@ -95,8 +157,12 @@ class KonselingController extends Controller
         // deskripsi/kesimpulan/rekomendasi/catatan laporan setiap baris.
         // Sama seperti getDetail() di atas, Kepsek sekarang hanya
         // menerima data administratif (lihat Konseling::untukMonitoringKepsek()).
-        // Admin tetap menerima data lengkap.
-        if ($this->isKepsek($request)) {
+        //
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 3): Admin dulu masih
+        // dikecualikan dan menerima seluruh baris apa adanya. Sekarang
+        // disanitasi sama persis dengan Kepsek — lihat penjelasan lengkap
+        // di getDetail() dan Konseling::untukMonitoringKepsek().
+        if ($this->isKepsek($request) || $this->isAdmin($request)) {
             return response()->json([
                 'success' => true,
                 'data' => $rows->map->untukMonitoringKepsek()->values(),
@@ -121,9 +187,17 @@ class KonselingController extends Controller
         // laporan — padahal halaman siswa menjanjikan isi konsultasi
         // hanya untuk siswa & Guru BK yang dipilih. Lihat
         // Konseling::untukMonitoringKepsek() untuk daftar field yang
-        // aman dilihat Kepsek (data administratif, bukan isi konsultasi).
-        // Admin/Guru BK pemilik/siswa pemilik tetap menerima data penuh.
-        if ($this->isKepsek($request)) {
+        // aman dilihat (data administratif, bukan isi konsultasi).
+        //
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 3): Admin dulu masih
+        // dikecualikan dari sanitasi ini dan menerima $row utuh — padahal
+        // klaim kerahasiaan UI tidak mengecualikan Admin, dan tidak ada
+        // alasan proses bisnis bagi Admin (administrator teknis/sistem)
+        // untuk membaca substansi kasus konseling. Sekarang Admin
+        // disanitasi dengan cara yang sama persis dengan Kepsek. Hanya
+        // Guru BK pemilik dan siswa pemilik yang tetap menerima data
+        // penuh — merekalah peserta sesi yang sebenarnya.
+        if ($this->isKepsek($request) || $this->isAdmin($request)) {
             return response()->json(['success' => true, 'data' => $row->untukMonitoringKepsek()]);
         }
 
@@ -164,6 +238,26 @@ class KonselingController extends Controller
         }
         if (!$siswa) {
             return response()->json(['success' => false, 'message' => 'Siswa tidak ditemukan'], 404);
+        }
+
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 4): route sudah dikunci
+        // 'ability:siswa' (lihat routes/api.php), tapi pengecekan eksplisit
+        // di sini tetap dipertahankan sebagai lapis kedua — konsisten
+        // dengan pola defense-in-depth yang sudah dipakai di codebase ini
+        // (mis. assertGuruCanManageKonseling() tetap dipanggil di
+        // controller walau route juga sudah dibatasi). assertSiswaOwns()
+        // di bawah TIDAK cukup sendirian di sini karena ia memang sengaja
+        // dirancang meloloskan seluruh staff (dipakai juga di konteks lain
+        // yang butuh staff punya akses lebih luas) — endpoint pengajuan
+        // reguler ini harus benar-benar tertutup untuk staff: Guru BK
+        // sudah punya jalur sendiri (POST /api/konseling/walkin), dan
+        // Kepsek/Admin tidak punya alasan bisnis mengajukan konsultasi
+        // atas nama siswa.
+        if ($this->isStaff($request)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Endpoint ini hanya untuk siswa. Guru BK gunakan POST /api/konseling/walkin.',
+            ], 403);
         }
 
         // Siswa hanya boleh ajukan untuk dirinya
@@ -475,6 +569,23 @@ class KonselingController extends Controller
 
         if (in_array($status, ['Dibatalkan', 'Ditolak'], true) && empty($alasan)) {
             return response()->json(['success' => false, 'message' => 'Alasan pembatalan/penolakan wajib diisi'], 400);
+        }
+
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 5): dulu di sini tidak ada
+        // pengecekan status_konfirmasi sama sekali. Jalur web
+        // (Web/KonselingController@batalGuru) sudah menolak pembatalan
+        // begitu status_konfirmasi masuk kategori "sudah dikonfirmasi", tapi
+        // endpoint API generik ini luput — konseling dengan
+        // status=Proses & status_konfirmasi=Dikonfirmasi masih bisa diubah
+        // jadi Dibatalkan lewat PUT /api/konseling/{id}/status, melewati
+        // aturan bisnis yang sama. Sekarang aturannya disamakan: kalau
+        // sudah dikonfirmasi, pembatalan harus lewat laporan (menyelesaikan
+        // sesi), bukan lewat endpoint status generik ini.
+        if ($status === 'Dibatalkan' && in_array($row->status_konfirmasi ?? '', self::CONFIRMED_STATUSES, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jadwal yang sudah dikonfirmasi tidak dapat dibatalkan. Gunakan laporan untuk menyelesaikan sesi.',
+            ], 400);
         }
 
         $row->status = $status;

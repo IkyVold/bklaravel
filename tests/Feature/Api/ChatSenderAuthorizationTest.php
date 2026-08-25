@@ -20,6 +20,13 @@ use Tests\TestCase;
  * terkirim dari admin/kepsek dicatat seolah-olah dari 'guru'. Sekarang kirim
  * pesan memakai assertCanChatKonseling(), yang hanya meloloskan siswa
  * pemilik dan Guru BK pemilik.
+ *
+ * Juga menutup poin revisi 25 Agustus 2026 #2: "Kepala Sekolah dan Admin
+ * masih dapat membaca isi chat konsultasi" — history() sebelumnya masih
+ * memakai assertCanViewKonseling() sehingga walau admin/kepsek sudah tidak
+ * bisa MENGIRIM pesan, mereka tetap bisa MEMBACA seluruh isi chat. Sekarang
+ * history() memakai assertCanReadChatKonseling(), aturan yang sama dengan
+ * hak mengirim pesan (hanya siswa pemilik & Guru BK pemilik).
  */
 class ChatSenderAuthorizationTest extends TestCase
 {
@@ -75,15 +82,54 @@ class ChatSenderAuthorizationTest extends TestCase
         $this->assertDatabaseCount('chat_messages', 0);
     }
 
-    public function test_admin_dan_kepsek_tetap_bisa_melihat_history_untuk_monitoring(): void
+    public function test_admin_tidak_bisa_membaca_history_chat_konseling(): void
     {
-        // assertCanViewKonseling() (dipakai oleh history()) tidak berubah —
-        // hak MELIHAT untuk monitoring tetap ada, yang dicabut hanya hak
-        // MENGIRIM pesan.
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 2): dulu test ini
+        // menegaskan sebaliknya (admin/kepsek "tetap bisa melihat history
+        // untuk monitoring") karena history() memakai
+        // assertCanViewKonseling() yang sengaja meloloskan admin/kepsek.
+        // Isi chat ternyata bagian dari isi konsultasi yang menurut UI
+        // siswa hanya boleh dilihat siswa & Guru BK yang dipilih — jadi
+        // sekarang history() memakai assertCanReadChatKonseling(), yang
+        // hanya meloloskan siswa pemilik dan Guru BK pemilik. Hak MELIHAT
+        // data administratif konseling (jadwal/status, lewat
+        // assertCanViewKonseling()) tetap ada; yang dicabut khusus akses
+        // ke ISI CHAT.
         [$row] = $this->buatKonseling();
 
         $admin = Admin::factory()->create();
         Sanctum::actingAs($admin, ['admin']);
+
+        $this->getJson('/api/chat/history?konseling_id=' . $row->id)
+            ->assertForbidden();
+    }
+
+    public function test_kepsek_tidak_bisa_membaca_history_chat_konseling(): void
+    {
+        [$row] = $this->buatKonseling();
+
+        $kepsek = Kepsek::factory()->create();
+        Sanctum::actingAs($kepsek, ['kepsek']);
+
+        $this->getJson('/api/chat/history?konseling_id=' . $row->id)
+            ->assertForbidden();
+    }
+
+    public function test_siswa_pemilik_tetap_bisa_membaca_history_chat_sendiri(): void
+    {
+        [$row, $siswa] = $this->buatKonseling();
+
+        Sanctum::actingAs($siswa, ['siswa']);
+
+        $this->getJson('/api/chat/history?konseling_id=' . $row->id)
+            ->assertOk();
+    }
+
+    public function test_guru_pemilik_tetap_bisa_membaca_history_chat_sendiri(): void
+    {
+        [$row, , $guru] = $this->buatKonseling();
+
+        Sanctum::actingAs($guru, ['guru']);
 
         $this->getJson('/api/chat/history?konseling_id=' . $row->id)
             ->assertOk();

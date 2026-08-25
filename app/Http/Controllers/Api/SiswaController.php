@@ -60,6 +60,12 @@ class SiswaController extends Controller
         if (empty($data['password'])) {
             $data['password'] = $data['nis'];
         }
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): password awal siswa
+        // selalu ditentukan oleh orang lain (Guru BK/Admin), bukan siswa
+        // itu sendiri — baik itu default (= NIS) maupun password custom
+        // dari Admin. Tandai wajib ganti password supaya siswa dipaksa
+        // menentukan password sendiri saat login pertama kali.
+        $data['must_change_password'] = true;
 
         $siswa = Siswa::create($data);
 
@@ -113,6 +119,11 @@ class SiswaController extends Controller
                     'kelas' => $kelas,
                     'password' => $password,
                     'jenis_kelamin' => $row['jenis_kelamin'] ?? null,
+                    // PERBAIKAN (revisi 25 Agustus 2026, poin 11): sama
+                    // seperti create() di atas — password awal (default
+                    // NIS atau custom dari Admin) bukan pilihan siswa
+                    // sendiri, jadi wajib diganti saat login pertama.
+                    'must_change_password' => true,
                 ]);
                 $inserted++;
             } catch (\Throwable $e) {
