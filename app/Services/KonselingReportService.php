@@ -4,22 +4,10 @@ namespace App\Services;
 
 use App\Models\Konseling;
 use App\Models\Notifikasi;
+use App\Support\StatusPenanganan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Satu-satunya sumber aturan bisnis untuk menyimpan laporan konseling —
- * dipakai oleh Web/KonselingController@laporan dan Api/KonselingController@laporan.
- *
- * PERBAIKAN (revisi 24 Agustus 2026, poin 5): sebelumnya jalur API punya
- * logika laporan sendiri yang terpisah dari jalur Web — validasi
- * kesimpulan/rekomendasi bersifat nullable dan sama sekali tidak memeriksa
- * aturan "status penanganan Monitoring wajib sesi lanjutan". Akibatnya
- * konseling dengan kategori Monitoring bisa langsung ditandai Selesai lewat
- * API tanpa follow-up apa pun, padahal jalur Web sudah mewajibkannya.
- * Sekarang kedua controller hanya memanggil simpan() di sini — jangan
- * duplikasi logika laporan/Monitoring di controller manapun.
- */
 class KonselingReportService
 {
     public function __construct(private ScheduleService $schedule)
@@ -47,27 +35,6 @@ class KonselingReportService
     {
         $hasLaporan = !empty($row->laporan_created_at) || !empty($row->laporan_kesimpulan);
 
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 6): sebelumnya kewajiban
-        // sesi lanjutan untuk status Monitoring hanya diperiksa/ dibuat
-        // ketika !$hasLaporan (laporan PERTAMA). Akibatnya, laporan awal
-        // dengan status penanganan Selesai lalu diedit (dalam window 72
-        // jam) menjadi Monitoring tidak pernah lolos validasi wajib sesi
-        // lanjutan DAN tidak pernah membuat sesi lanjutan — karena
-        // $hasLaporan sudah true. Bisa terbentuk status_penanganan =
-        // Monitoring tanpa sesi lanjutan sama sekali.
-        //
-        // Sekarang yang menentukan wajib/tidaknya sesi lanjutan bukan lagi
-        // "apakah ini laporan pertama", melainkan "apakah konseling ini
-        // SUDAH punya sesi lanjutan (child)". child ditandai lewat kolom
-        // pengajuan_sebelumnya_id yang menunjuk ke $row->id (lihat
-        // buatSesiLanjutan()). Jadi:
-        //  - Laporan pertama, status Monitoring → wajib buat sesi lanjutan
-        //    (seperti sebelumnya, karena belum ada child).
-        //  - Edit laporan yang MENGUBAH status jadi Monitoring dan BELUM
-        //    punya child → tetap wajib mengisi & membuat sesi lanjutan.
-        //  - Edit laporan yang statusnya sudah Monitoring dan child SUDAH
-        //    ada (dibuat sebelumnya) → tidak diminta lagi / tidak dibuat
-        //    duplikat.
         $hasChildLanjutan = Schema::hasColumn('konseling', 'pengajuan_sebelumnya_id')
             && Konseling::where('pengajuan_sebelumnya_id', $row->id)->exists();
 
@@ -99,13 +66,17 @@ class KonselingReportService
             }
         }
 
+        if (!empty($data['laporan_status_penanganan']) && !in_array($data['laporan_status_penanganan'], StatusPenanganan::ALL, true)) {
+            throw new \RuntimeException('Status penanganan tidak valid.');
+        }
+
         // Sesi lanjutan wajib tanggal & jam kalau status penanganan Monitoring
         // dan belum ada sesi lanjutan (child) untuk konseling ini.
         $statusPenanganan = $data['laporan_status_penanganan'] ?? $row->laporan_status_penanganan;
-        $buatLanjutan = !empty($data['buat_lanjutan']) || $statusPenanganan === 'Monitoring';
+        $buatLanjutan = !empty($data['buat_lanjutan']) || $statusPenanganan === StatusPenanganan::MONITORING;
         $lanjutanLengkap = !empty($data['lanjutan_tanggal']) && !empty($data['lanjutan_jam']);
 
-        if ($statusPenanganan === 'Monitoring' && !$hasChildLanjutan && !$lanjutanLengkap) {
+        if ($statusPenanganan === StatusPenanganan::MONITORING && !$hasChildLanjutan && !$lanjutanLengkap) {
             throw new \RuntimeException('Status Monitoring: isi tanggal & jam sesi lanjutan.');
         }
 
@@ -116,7 +87,10 @@ class KonselingReportService
             $row->laporan_kesimpulan = $data['laporan_kesimpulan'] ?? $row->laporan_kesimpulan;
             $row->laporan_rekomendasi = $data['laporan_rekomendasi'] ?? $row->laporan_rekomendasi;
             $row->laporan_status_penanganan = $data['laporan_status_penanganan'] ?? $row->laporan_status_penanganan;
-            $row->laporan_catatan_tambahan = $data['laporan_catatan_tambahan'] ?? '-';
+
+            $row->laporan_catatan_tambahan = $data['laporan_catatan_tambahan']
+                ?? $row->laporan_catatan_tambahan
+                ?? '-';
 
             if ($hasLaporan) {
                 $row->save();

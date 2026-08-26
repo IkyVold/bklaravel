@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountActive;
 use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\RoleAuth;
 use Illuminate\Foundation\Application;
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => RoleAuth::class,
             'password.changed' => EnsurePasswordChanged::class,
+            'account.active' => EnsureAccountActive::class,
             // Sanctum tidak mendaftarkan alias ini secara otomatis — wajib
             // didaftarkan manual agar routes/api.php yang memakai
             // middleware('ability:...') / 'abilities:...' benar-benar aktif,

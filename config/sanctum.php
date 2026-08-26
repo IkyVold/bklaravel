@@ -50,14 +50,6 @@ return [
     |
     */
 
-    // PERBAIKAN (revisi 24 Agustus 2026, poin 9): dulu 'expiration' => null
-    // berarti personal access token TIDAK PERNAH kedaluwarsa secara
-    // global. Dikombinasikan dengan bug logout di routes/api.php (yang
-    // membuat token tidak benar-benar tercabut saat logout), token yang
-    // pernah bocor akan tetap berlaku selamanya. Sekarang token kedaluwarsa
-    // otomatis setelah SANCTUM_TOKEN_EXPIRATION menit (default 7 hari)
-    // sebagai lapisan pertahanan kedua, terlepas dari logout di-panggil
-    // atau tidak.
     'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 60 * 24 * 7),
 
     /*

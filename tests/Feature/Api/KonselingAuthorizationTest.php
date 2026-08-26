@@ -10,13 +10,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi paling kritikal: assertGuruOwnsKonseling() lama
- * meloloskan siswa pemilik konsultasi untuk konfirmasi/laporan/ubah status
- * — padahal tindakan itu seharusnya wewenang Guru BK saja. Sekarang
- * assertGuruCanManageKonseling() TIDAK PERNAH meloloskan siswa, dan Guru A
- * tidak boleh mengelola konsultasi milik Guru B.
- */
 class KonselingAuthorizationTest extends TestCase
 {
     use RefreshDatabase;

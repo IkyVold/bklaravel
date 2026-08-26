@@ -25,6 +25,9 @@ class AuthenticationService
     private const THROTTLE_MAX_ATTEMPTS = 5;
     private const THROTTLE_DECAY_SECONDS = 60; // 1 menit
 
+    private const GLOBAL_IP_MAX_ATTEMPTS = 20;
+    private const GLOBAL_IP_DECAY_SECONDS = 60; // 1 menit
+
     /**
      * Lockout progresif KHUSUS akun siswa (kolom failed_login_attempts /
      * locked_until hanya ada di tabel siswa). Ambang dihitung dari jumlah
@@ -71,6 +74,30 @@ class AuthenticationService
     public function clearThrottle(string $key): void
     {
         RateLimiter::clear($key);
+    }
+
+    /* ---------------------------------------------------------------
+     | Burst throttle GLOBAL per-IP (lintas akun/role) — poin 2
+     |---------------------------------------------------------------*/
+
+    public function ipThrottleKey(Request $request): string
+    {
+        return Str::lower("login:ip:{$request->ip()}");
+    }
+
+    public function tooManyIpAttempts(string $key): bool
+    {
+        return RateLimiter::tooManyAttempts($key, self::GLOBAL_IP_MAX_ATTEMPTS);
+    }
+
+    public function ipAvailableIn(string $key): int
+    {
+        return RateLimiter::availableIn($key);
+    }
+
+    public function hitIpThrottle(string $key): void
+    {
+        RateLimiter::hit($key, self::GLOBAL_IP_DECAY_SECONDS);
     }
 
     /* ---------------------------------------------------------------

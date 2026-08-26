@@ -96,27 +96,6 @@ trait AuthorizesBk
         }
     }
 
-    /**
-     * Hak MELIHAT saja. Admin & Kepsek boleh (monitoring), Guru BK pemilik boleh,
-     * Siswa pemilik boleh. Tidak memberi hak mengubah data.
-     *
-     * PENTING: fungsi ini HANYA untuk melihat (baca data konseling, riwayat
-     * chat untuk keperluan monitoring, dsb). JANGAN dipakai untuk
-     * mengizinkan aksi menulis/berpartisipasi seperti mengirim pesan chat —
-     * lihat assertCanChatKonseling() untuk itu. Sebelumnya
-     * ChatController@send salah memakai fungsi ini, sehingga Admin/Kepsek
-     * yang seharusnya cuma boleh MELIHAT ikut bisa MENGIRIM pesan chat
-     * konseling (revisi 24 Agustus 2026, poin 2).
-     *
-     * CATATAN (revisi 25 Agustus 2026, poin 3): fungsi ini hanya gerbang
-     * OTORISASI (boleh akses endpoint atau tidak) — bukan penentu FIELD
-     * apa saja yang dikembalikan. Untuk data konseling itu sendiri, Admin
-     * & Kepsek yang lolos di sini tetap disaring lebih lanjut di
-     * controller (lihat Konseling::untukMonitoringKepsek() dan
-     * pemakaiannya di getDetail()/listAll()/listBySiswa()) supaya isi
-     * konsultasi (deskripsi/kesimpulan/rekomendasi/catatan) hanya
-     * diterima siswa & Guru BK yang bersangkutan, bukan Admin/Kepsek.
-     */
     protected function assertCanViewKonseling(Request $request, $konseling): void
     {
         if ($this->isRole($request, 'admin', 'kepsek')) {
@@ -156,25 +135,6 @@ trait AuthorizesBk
         abort(response()->json(['success' => false, 'message' => 'Akses ditolak'], 403));
     }
 
-    /**
-     * Hak MEMBACA isi/riwayat chat konseling. BEDA dengan
-     * assertCanViewKonseling(): assertCanViewKonseling() sengaja
-     * meloloskan Admin & Kepsek untuk keperluan monitoring data
-     * administratif konseling (jadwal, status, dsb) — tapi ISI CHAT
-     * adalah bagian dari isi konsultasi yang menurut halaman
-     * siswa/konseling-pilih.blade.php hanya boleh dilihat siswa dan
-     * Guru BK yang dipilih.
-     *
-     * PERBAIKAN (revisi 25 Agustus 2026, poin 2): sebelumnya
-     * ChatController@history memakai assertCanViewKonseling(), sehingga
-     * walau Admin/Kepsek sudah tidak bisa MENGIRIM pesan (lihat
-     * assertCanChatKonseling(), revisi 24 Agustus 2026 poin 2), mereka
-     * tetap bisa MEMBACA seluruh isi chat lewat endpoint history.
-     * Aturannya sama persis dengan assertCanChatKonseling() (hanya
-     * siswa pemilik & Guru BK pemilik) — dibuat sebagai fungsi terpisah
-     * supaya namanya tetap jelas menggambarkan maksud pemanggilan di
-     * setiap controller (baca vs kirim), bukan karena aturannya beda.
-     */
     protected function assertCanReadChatKonseling(Request $request, $konseling): void
     {
         $this->assertCanChatKonseling($request, $konseling);
@@ -196,20 +156,6 @@ trait AuthorizesBk
         abort(response()->json(['success' => false, 'message' => 'Akses ditolak'], 403));
     }
 
-    /**
-     * PERBAIKAN (revisi 24 Agustus 2026, poin 8): dulu ownership diperiksa
-     * dengan guru_id COCOK ATAU nama COCOK — walau konseling sudah punya
-     * guru_id yang menunjuk Guru BK tertentu, sistem tetap mencoba
-     * mencocokkan nama sebagai fallback. Nama BUKAN identifier unik: jika
-     * ada dua Guru BK dengan nama sama persis dan konseling ini sebenarnya
-     * milik Guru A (guru_id = id Guru A), Guru B bisa ikut lolos ownership
-     * check hanya karena namanya kebetulan sama.
-     *
-     * Sekarang: begitu konseling punya guru_id, itu SATU-SATUNYA sumber
-     * kebenaran — fallback nama HANYA dipakai untuk data lama yang memang
-     * belum punya guru_id sama sekali (guru_id null), bukan dipakai
-     * bersamaan/menggantikan guru_id yang sudah ada tapi tidak cocok.
-     */
     private function guruOwnsKonseling(Request $request, $konseling): bool
     {
         $user = $request->user();
@@ -222,5 +168,33 @@ trait AuthorizesBk
         // nama sah dipakai.
         $nama = $user->nama ?? '';
         return $nama !== '' && strcasecmp((string) $konseling->guru_bk, $nama) === 0;
+    }
+
+    protected function informasiOwnedByGuru(Request $request, $informasi): bool
+    {
+        $user = $request->user();
+
+        if (!is_null($informasi->guru_id)) {
+            return (int) $informasi->guru_id === (int) $user->id;
+        }
+
+        $nama = $user->nama ?? '';
+        return $nama !== '' && strcasecmp((string) $informasi->guru_bk, $nama) === 0;
+    }
+
+    /**
+     * Hak MENGUBAH/MENGHAPUS informasi_bk. Admin boleh mengelola semua
+     * (dengan audit trail). Guru BK hanya boleh mengelola informasi
+     * miliknya sendiri — lihat informasiOwnedByGuru().
+     */
+    protected function assertGuruCanManageInformasi(Request $request, $informasi): void
+    {
+        if ($this->isRole($request, 'admin')) {
+            return;
+        }
+        if ($this->isGuru($request) && $this->informasiOwnedByGuru($request, $informasi)) {
+            return;
+        }
+        abort(response()->json(['success' => false, 'message' => 'Akses ditolak: informasi ini milik Guru BK lain'], 403));
     }
 }

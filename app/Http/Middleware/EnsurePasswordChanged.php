@@ -9,26 +9,6 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-/**
- * PERBAIKAN (revisi 25 Agustus 2026, poin 11): sebelumnya tidak ada
- * mekanisme apa pun yang memaksa siswa mengganti password default
- * (password awal siswa SELALU = NIS sendiri — lihat Api/SiswaController@
- * create/@importRows — dan NIS bukan rahasia, sering tertera di kartu
- * pelajar/absensi/rapor). Selama siswa tidak pernah mengganti password,
- * akun tetap bisa diakses siapa pun yang tahu NIS-nya.
- *
- * Middleware ini mengunci SELURUH endpoint API untuk siswa yang akunnya
- * masih ditandai must_change_password = true, KECUALI endpoint yang
- * dibutuhkan siswa untuk benar-benar mematuhi kewajiban ini (lihat
- * ganti password diri sendiri) dan endpoint dasar (logout, cek sesi).
- *
- * Guru BK, Kepsek, dan Admin TIDAK terpengaruh middleware ini — mereka
- * belum memiliki mekanisme self-service ganti password sama sekali
- * (akun mereka hanya bisa direset oleh Admin lewat AkunController), jadi
- * memblokir mereka di sini hanya akan mengunci akun tanpa jalan keluar.
- * Penerapan mekanisme wajib-ganti-password untuk staff perlu menunggu
- * fitur ganti password self-service untuk staff dibuat terlebih dahulu.
- */
 class EnsurePasswordChanged
 {
     /**

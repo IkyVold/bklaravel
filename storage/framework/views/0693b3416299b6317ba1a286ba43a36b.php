@@ -191,7 +191,6 @@
     </main>
 
     
-    
     <div class="modal" id="editModal">
     <div class="modal-content">
         <div class="modal-header">
@@ -224,7 +223,6 @@
                     <input type="text" name="edit_value" id="inputTelepon" maxlength="30">
                 </div>
                 <div class="modal-field" id="fieldPassword" style="display:none">
-                    
                     <label>Password Saat Ini</label>
                     <input type="password" name="current_password" id="inputCurrentPassword" autocomplete="current-password">
                     <label style="margin-top:10px;display:block">Password Baru</label>
@@ -284,10 +282,6 @@
         tanggal_lahir: [document.getElementById('inputTanggal')],
         alamat: [document.getElementById('inputAlamat')],
         no_telepon: [document.getElementById('inputTelepon')],
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 13): inputCurrentPassword
-        // ditambahkan di sini juga, supaya ikut logika enable/disable +
-        // name yang sama seperti input lain — kalau bukan field password
-        // yang aktif, atribut name-nya dilepas agar tidak ikut terkirim.
         password: [document.getElementById('inputCurrentPassword'), document.getElementById('inputPassword'), document.getElementById('inputPasswordConfirm')]
     };
     var inputNames = {
@@ -337,9 +331,6 @@
     });
 
     <?php if($mustChangePassword ?? false): ?>
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): buka langsung modal
-        // ganti password supaya siswa tidak perlu mencari-cari tombol Edit
-        // saat wajib mengganti password default.
         openModal('password', 'Password', '');
     <?php endif; ?>
 })();

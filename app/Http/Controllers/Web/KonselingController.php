@@ -11,6 +11,7 @@ use App\Models\Siswa;
 use App\Services\KonselingReportService;
 use App\Services\ScheduleService;
 use App\Support\KategoriKonseling;
+use App\Support\StatusPenanganan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Schema;
@@ -92,9 +93,6 @@ class KonselingController extends Controller
             'deskripsi' => 'required|string|min:20',
             'tanggal' => 'required|date|after_or_equal:today',
             'jam' => 'required|string|max:10',
-            // PERBAIKAN (revisi 24 Agustus 2026, poin 11): opsional — kalau
-            // tidak diisi, ScheduleService memakai DEFAULT_DURATION_MINUTES
-            // (60 menit) saat cek overlap.
             'durasi_menit' => 'nullable|integer|min:5|max:480',
         ], [
             'deskripsi.min' => 'Deskripsi minimal 20 karakter agar Guru BK dapat memahami masalah Anda.',
@@ -114,14 +112,6 @@ class KonselingController extends Controller
             return back()->withInput()->withErrors(['guru_bk' => 'Guru BK tidak ditemukan. Pilih ulang dari daftar.']);
         }
 
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 7): dulu di sini hanya
-        // dipastikan $guru ada, tidak pernah diperiksa is_active. UI memang
-        // hanya menampilkan Guru BK aktif, tapi itu cuma filter tampilan —
-        // seseorang bisa memanipulasi request (mis. lewat DevTools/curl)
-        // dan mengirim guru_id/guru_bk milik Guru BK yang sudah
-        // dinonaktifkan, dan backend tetap menerimanya. Validasi ini sudah
-        // ada di jalur API (Api/KonselingController::store()); sekarang
-        // jalur Web memakai aturan yang sama — jangan mengandalkan filter UI.
         if (!($guru->is_active ?? true)) {
             return back()->withInput()->withErrors(['guru_bk' => 'Guru BK tidak aktif. Pilih Guru BK lain dari daftar.']);
         }
@@ -163,45 +153,47 @@ class KonselingController extends Controller
             }
         }
 
-        // Cek konflik jadwal — satu aturan bersama dengan API (ScheduleService).
-        // Guru BK maupun siswa tidak boleh mempunyai dua sesi aktif yang
-        // interval waktunya overlap (bukan lagi hanya jam mulai persis sama
-        // — revisi 24 Agustus 2026, poin 11).
-        if ($this->schedule->hasConflict($siswa->id, $guru->id, $guru->nama, $tanggal, $jam, $data['durasi_menit'] ?? null)) {
+        $row = $this->schedule->runLocked($guru->id, $siswa->id, function () use ($siswa, $guru, $tanggal, $jam, $jenis, $tipe, $jadwalRutinId, $data) {
+            if ($this->schedule->hasConflict($siswa->id, $guru->id, $guru->nama, $tanggal, $jam, $data['durasi_menit'] ?? null)) {
+                return null;
+            }
+
+            // Status awal disamakan dengan API: pengajuan baru selalu Menunggu
+            // konfirmasi Guru BK, baru berubah menjadi Proses setelah dikonfirmasi.
+            $payload = [
+                'siswa_id' => $siswa->id,
+                'guru_bk' => $guru->nama,
+                'jenis' => $jenis,
+                'tipe_jadwal' => $tipe,
+                'jadwal_rutin_id' => $jadwalRutinId,
+                'kategori' => $data['kategori'],
+                'deskripsi' => $data['deskripsi'],
+                'tanggal' => $tanggal,
+                'jam' => $jam,
+                'kelas_siswa' => $siswa->kelas,
+                'status' => 'Menunggu',
+                'status_konfirmasi' => 'Belum Dikonfirmasi',
+                'created_at' => now(),
+            ];
+            if (Schema::hasColumn('konseling', 'guru_id')) {
+                $payload['guru_id'] = $guru->id;
+            }
+            if (Schema::hasColumn('konseling', 'durasi_menit')) {
+                $payload['durasi_menit'] = $data['durasi_menit'] ?? null;
+            }
+            // Aman jika kolom belum di-migrate
+            if (!Schema::hasColumn('konseling', 'tipe_jadwal')) {
+                unset($payload['tipe_jadwal'], $payload['jadwal_rutin_id']);
+            }
+
+            return Konseling::create($payload);
+        });
+
+        if (!$row) {
             return back()->withInput()->withErrors([
                 'jam' => 'Jadwal bentrok. Anda atau Guru BK tersebut sudah memiliki konseling di tanggal/jam yang sama.',
             ]);
         }
-
-        // Status awal disamakan dengan API: pengajuan baru selalu Menunggu
-        // konfirmasi Guru BK, baru berubah menjadi Proses setelah dikonfirmasi.
-        $payload = [
-            'siswa_id' => $siswa->id,
-            'guru_bk' => $guru->nama,
-            'jenis' => $jenis,
-            'tipe_jadwal' => $tipe,
-            'jadwal_rutin_id' => $jadwalRutinId,
-            'kategori' => $data['kategori'],
-            'deskripsi' => $data['deskripsi'],
-            'tanggal' => $tanggal,
-            'jam' => $jam,
-            'kelas_siswa' => $siswa->kelas,
-            'status' => 'Menunggu',
-            'status_konfirmasi' => 'Belum Dikonfirmasi',
-            'created_at' => now(),
-        ];
-        if (Schema::hasColumn('konseling', 'guru_id')) {
-            $payload['guru_id'] = $guru->id;
-        }
-        if (Schema::hasColumn('konseling', 'durasi_menit')) {
-            $payload['durasi_menit'] = $data['durasi_menit'] ?? null;
-        }
-        // Aman jika kolom belum di-migrate
-        if (!Schema::hasColumn('konseling', 'tipe_jadwal')) {
-            unset($payload['tipe_jadwal'], $payload['jadwal_rutin_id']);
-        }
-
-        $row = Konseling::create($payload);
 
         // Notifikasi ke Guru BK (match notifikasi_guru Node)
         try {
@@ -407,19 +399,6 @@ class KonselingController extends Controller
             return back()->with('error', 'Hanya pengajuan berstatus Menunggu yang dapat dikonfirmasi.');
         }
 
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 9): dulu status_konfirmasi
-        // di sini cuma divalidasi 'nullable|string|max:30' — nilai bebas apa
-        // pun bisa dikirim client. Server kemudian hanya menangani secara
-        // khusus 'Dikonfirmasi'/'Tervalidasi' (dinormalisasi jadi
-        // 'Terkonfirmasi') dan selain itu dipakai APA ADANYA sebagai
-        // status_konfirmasi, sementara $row->status tetap dipaksa 'Proses'
-        // tanpa syarat. Kalau field dimanipulasi jadi nilai lain (mis.
-        // "Ditolak"), state ganjil status=Proses & status_konfirmasi=Ditolak
-        // bisa terbentuk — backend tidak boleh bergantung pada UI yang tidak
-        // pernah mengirim nilai itu. Form konfirmasi web ini HANYA untuk aksi
-        // konfirmasi, jadi nilainya dikunci ke satu-satunya pilihan yang sah:
-        // 'Terkonfirmasi'. Penolakan/pembatalan pakai proses tersendiri
-        // (lihat batalGuru()), bukan lewat form ini.
         $data = $request->validate([
             'tanggal_konfirmasi' => 'required|date',
             'jam_konfirmasi' => 'required|string|max:10',
@@ -436,24 +415,27 @@ class KonselingController extends Controller
         // Validator sebelum sampai ke sini.
         $konfirmasi = 'Terkonfirmasi';
 
-        // Cek konflik jadwal — sama seperti API, memakai tanggal/jam
-        // baru yang dipilih Guru BK saat konfirmasi. Dulu dibungkus
-        // "if ($konfirmasi === 'Terkonfirmasi')" karena $konfirmasi bisa
-        // bernilai lain; sekarang $konfirmasi SELALU 'Terkonfirmasi' (lihat
-        // di atas), jadi pengecekan bentrok berlaku tanpa syarat.
-        if ($this->schedule->hasConflictFor($row, $data['tanggal_konfirmasi'], $data['jam_konfirmasi'])) {
+        $ok = $this->schedule->runLocked($row->guru_id, $row->siswa_id, function () use ($row, $data, $konfirmasi) {
+            if ($this->schedule->hasConflictFor($row, $data['tanggal_konfirmasi'], $data['jam_konfirmasi'])) {
+                return false;
+            }
+
+            $row->status_konfirmasi = $konfirmasi;
+            $row->tanggal_konfirmasi = $data['tanggal_konfirmasi'];
+            $row->jam_konfirmasi = $data['jam_konfirmasi'];
+            // Juga update jadwal utama agar siswa melihat jadwal yang dikonfirmasi
+            $row->tanggal = $data['tanggal_konfirmasi'];
+            $row->jam = $data['jam_konfirmasi'];
+            // Transisi state: Menunggu -> Proses, disamakan dengan API.
+            $row->status = 'Proses';
+            $row->save();
+
+            return true;
+        });
+
+        if (!$ok) {
             return back()->withInput()->with('error', 'Jadwal bentrok. Guru BK atau siswa sudah memiliki konseling lain di tanggal/jam tersebut.');
         }
-
-        $row->status_konfirmasi = $konfirmasi;
-        $row->tanggal_konfirmasi = $data['tanggal_konfirmasi'];
-        $row->jam_konfirmasi = $data['jam_konfirmasi'];
-        // Juga update jadwal utama agar siswa melihat jadwal yang dikonfirmasi
-        $row->tanggal = $data['tanggal_konfirmasi'];
-        $row->jam = $data['jam_konfirmasi'];
-        // Transisi state: Menunggu -> Proses, disamakan dengan API.
-        $row->status = 'Proses';
-        $row->save();
 
         if ($row->siswa) {
             // Skema tunggal (penerima_id/penerima_role/dibaca/data), sama
@@ -482,7 +464,7 @@ class KonselingController extends Controller
         $data = $request->validate([
             'laporan_kesimpulan' => 'required|string|min:5',
             'laporan_rekomendasi' => 'required|string|min:5',
-            'laporan_status_penanganan' => 'required|string|max:80',
+            'laporan_status_penanganan' => ['required', 'string', Rule::in(StatusPenanganan::ALL)],
             'laporan_catatan_tambahan' => 'nullable|string',
             // Sesi lanjutan (jika Monitoring)
             'buat_lanjutan' => 'nullable|boolean',
@@ -496,11 +478,6 @@ class KonselingController extends Controller
 
         $user = Session::get('auth_user', []);
 
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 5): semua business rule
-        // (window edit 72 jam, wajib konfirmasi, wajib sesi lanjutan untuk
-        // Monitoring, transaksi) sekarang tunggal di KonselingReportService
-        // — dipakai juga oleh Api/KonselingController@laporan agar kedua
-        // jalur tidak bisa lagi berbeda perilaku.
         try {
             $msg = $this->reports->simpan($row, $data, $user['nama'] ?? 'Guru BK');
         } catch (\RuntimeException $e) {
@@ -545,43 +522,46 @@ class KonselingController extends Controller
             $jenis = 'Luring';
         }
 
-        // Walk-in langsung terkonfirmasi (guru & siswa bertemu langsung),
-        // tapi tetap harus dicek supaya tidak bentrok dengan sesi lain yang
-        // sudah lebih dulu terjadwal pada slot yang sama.
-        if ($this->schedule->hasConflict($siswa->id, $guruId, $namaGuru, $data['tanggal'], $data['jam'], $data['durasi_menit'] ?? null)) {
+        $row = $this->schedule->runLocked($guruId ? (int) $guruId : null, $siswa->id, function () use ($siswa, $guruId, $namaGuru, $jenis, $data) {
+            if ($this->schedule->hasConflict($siswa->id, $guruId, $namaGuru, $data['tanggal'], $data['jam'], $data['durasi_menit'] ?? null)) {
+                return null;
+            }
+
+            $payload = [
+                'siswa_id' => $siswa->id,
+                'guru_bk' => $namaGuru,
+                'jenis' => $jenis,
+                'kategori' => $data['kategori'],
+                'deskripsi' => $data['deskripsi'],
+                'tanggal' => $data['tanggal'],
+                'jam' => $data['jam'],
+                'kelas_siswa' => $siswa->kelas,
+                'status' => 'Proses',
+                'status_konfirmasi' => 'Terkonfirmasi',
+                'tanggal_konfirmasi' => $data['tanggal'],
+                'jam_konfirmasi' => $data['jam'],
+                'tipe_jadwal' => 'Nonrutin',
+                'input_manual' => true,
+                'created_at' => now(),
+            ];
+            if (Schema::hasColumn('konseling', 'guru_id') && $guruId) {
+                $payload['guru_id'] = $guruId;
+            }
+            if (Schema::hasColumn('konseling', 'catatan_walkin')) {
+                $payload['catatan_walkin'] = $data['catatan_walkin'] ?? null;
+            }
+            if (Schema::hasColumn('konseling', 'durasi_menit')) {
+                $payload['durasi_menit'] = $data['durasi_menit'] ?? null;
+            }
+
+            return Konseling::create($payload);
+        });
+
+        if (!$row) {
             return back()->withInput()->withErrors([
                 'jam' => 'Jadwal bentrok. Siswa atau Guru BK sudah memiliki konseling lain di tanggal/jam tersebut.',
             ]);
         }
-
-        $payload = [
-            'siswa_id' => $siswa->id,
-            'guru_bk' => $namaGuru,
-            'jenis' => $jenis,
-            'kategori' => $data['kategori'],
-            'deskripsi' => $data['deskripsi'],
-            'tanggal' => $data['tanggal'],
-            'jam' => $data['jam'],
-            'kelas_siswa' => $siswa->kelas,
-            'status' => 'Proses',
-            'status_konfirmasi' => 'Terkonfirmasi',
-            'tanggal_konfirmasi' => $data['tanggal'],
-            'jam_konfirmasi' => $data['jam'],
-            'tipe_jadwal' => 'Nonrutin',
-            'input_manual' => true,
-            'created_at' => now(),
-        ];
-        if (Schema::hasColumn('konseling', 'guru_id') && $guruId) {
-            $payload['guru_id'] = $guruId;
-        }
-        if (Schema::hasColumn('konseling', 'catatan_walkin')) {
-            $payload['catatan_walkin'] = $data['catatan_walkin'] ?? null;
-        }
-        if (Schema::hasColumn('konseling', 'durasi_menit')) {
-            $payload['durasi_menit'] = $data['durasi_menit'] ?? null;
-        }
-
-        $row = Konseling::create($payload);
 
         if ($request->boolean('langsung_laporan')) {
             return redirect()->route('guru.konseling.show', $row->id)->with('success', 'Walk-in dicatat. Lanjutkan isi laporan.');

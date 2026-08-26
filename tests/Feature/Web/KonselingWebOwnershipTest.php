@@ -9,14 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
-/**
- * Menutup dua poin revisi jalur web:
- *  1) show() dulu pakai findOrFail() generik untuk role guru, sehingga
- *     Guru A bisa lihat detail konsultasi Guru B hanya dengan ganti ID di
- *     URL. Sekarang wajib lewat findGuruKonseling() yang di-scope guru_id.
- *  2) destroySiswa() dulu hard-delete baris konsultasi. Sekarang diganti
- *     soft-cancel (status=Dibatalkan) dan route DELETE sudah dihapus.
- */
 class KonselingWebOwnershipTest extends TestCase
 {
     use RefreshDatabase;

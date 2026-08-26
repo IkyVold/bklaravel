@@ -10,22 +10,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi 24 Agustus 2026 #1: "Guru BK dan Kepala Sekolah dapat
- * mengganti password siswa melalui API". assertSiswaOwnsNis() memang sengaja
- * membolehkan staff melewati pengecekan kepemilikan NIS (untuk field lain),
- * tapi field 'password' pada ProfileController@update sekarang hanya boleh
- * diisi oleh siswa yang bersangkutan sendiri, atau oleh Admin.
- *
- * PEMBARUAN (revisi 25 Agustus 2026, poin 10): dua test di bawah
- * (guru/kepsek tidak bisa ganti password) awalnya menguji kontrak lama —
- * saat itu Guru BK/Kepsek masih lolos masuk ke update() (untuk field lain)
- * dan HANYA field 'password' yang disaring diam-diam, sehingga response
- * tetap 200 tapi password tidak berubah. Sejak poin 10, Guru BK & Kepsek
- * ditolak TOTAL di update() (403) sebelum sempat memproses field apa pun.
- * Assert status code disesuaikan jadi assertForbidden(), tapi assertion inti
- * (password tidak pernah berubah) tetap dipertahankan.
- */
 class ProfilePasswordAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
@@ -62,12 +46,6 @@ class ProfilePasswordAuthorizationTest extends TestCase
 
     public function test_guru_cannot_change_other_profile_fields(): void
     {
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 10): dulu test ini
-        // (dengan nama test_guru_can_still_change_other_profile_fields)
-        // justru mendokumentasikan bahwa Guru BK BOLEH mengubah kelas &
-        // alamat siswa mana pun. Itulah persis celah yang dilaporkan —
-        // sekarang Guru BK ditolak total di endpoint update profil,
-        // hanya boleh membaca (lihat ProfileController@get).
         $siswa = Siswa::factory()->create(['nis' => '3333333333', 'kelas' => '10 IPA 1', 'alamat' => 'Alamat Lama']);
 
         $guru = GuruBk::factory()->create();
@@ -105,9 +83,6 @@ class ProfilePasswordAuthorizationTest extends TestCase
 
         Sanctum::actingAs($siswa, ['siswa']);
 
-        // PEMBARUAN (revisi 25 Agustus 2026, poin 13): sejak sekarang siswa
-        // wajib menyertakan 'current_password' yang cocok sebelum password
-        // baru diterima — lihat test tambahan di bawah untuk kasus gagal.
         $this->putJson('/api/profile/5555555555', [
             'current_password' => 'password_lama',
             'password' => 'password_baru_dari_siswa',
@@ -116,12 +91,6 @@ class ProfilePasswordAuthorizationTest extends TestCase
         $this->assertNotSame($hashSebelum, $siswa->fresh()->password);
     }
 
-    /**
-     * Menutup poin revisi 25 Agustus 2026 #13: "Ganti password siswa tidak
-     * meminta password lama". Kalau session/token siswa berhasil diambil
-     * orang lain, tanpa pengecekan ini attacker bisa langsung mengganti
-     * password dan mengunci pemilik asli dari akunnya sendiri.
-     */
     public function test_siswa_cannot_change_password_without_current_password(): void
     {
         $siswa = Siswa::factory()->create(['nis' => '8888888888', 'password' => 'password_lama']);

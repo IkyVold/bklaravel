@@ -5,20 +5,11 @@ namespace Tests\Feature\Api;
 use App\Models\GuruBk;
 use App\Models\Konseling;
 use App\Models\Siswa;
+use App\Support\StatusPenanganan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * PERBAIKAN (revisi 25 Agustus 2026, poin 6): KonselingReportService dulu
- * hanya mewajibkan & membuat sesi lanjutan saat laporan PERTAMA
- * (!$hasLaporan). Kalau laporan awal berstatus Selesai lalu diedit
- * (dalam window 72 jam) menjadi Monitoring, validasi wajib sesi lanjutan
- * tidak berjalan dan sesi lanjutan juga tidak dibuat — bisa terbentuk
- * status_penanganan=Monitoring tanpa sesi lanjutan sama sekali. Sekarang
- * yang dicek adalah "apakah konseling ini sudah punya sesi lanjutan
- * (child)", bukan "apakah ini laporan pertama".
- */
 class LaporanMonitoringEditTest extends TestCase
 {
     use RefreshDatabase;
@@ -48,7 +39,7 @@ class LaporanMonitoringEditTest extends TestCase
         $this->putJson("/api/konseling/{$row->id}/laporan", [
             'laporan_kesimpulan' => 'Kesimpulan awal konseling',
             'laporan_rekomendasi' => 'Rekomendasi awal konseling',
-            'laporan_status_penanganan' => 'Selesai',
+            'laporan_status_penanganan' => StatusPenanganan::SELESAI_TERATASI,
         ])->assertOk();
 
         $this->assertSame('Selesai', $row->fresh()->status);
@@ -78,7 +69,7 @@ class LaporanMonitoringEditTest extends TestCase
         $this->putJson("/api/konseling/{$row->id}/laporan", [
             'laporan_kesimpulan' => 'Kesimpulan awal konseling',
             'laporan_rekomendasi' => 'Rekomendasi awal konseling',
-            'laporan_status_penanganan' => 'Selesai',
+            'laporan_status_penanganan' => StatusPenanganan::SELESAI_TERATASI,
         ])->assertOk();
 
         $response = $this->putJson("/api/konseling/{$row->id}/laporan", [
@@ -119,5 +110,48 @@ class LaporanMonitoringEditTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(1, Konseling::where('pengajuan_sebelumnya_id', $row->id)->count());
+    }
+
+    public function test_edit_laporan_tanpa_kirim_catatan_tidak_menghapus_catatan_lama(): void
+    {
+        [$row, $guru] = $this->buatKonselingSiapLaporan();
+        Sanctum::actingAs($guru, ['guru']);
+
+        $this->putJson("/api/konseling/{$row->id}/laporan", [
+            'laporan_kesimpulan' => 'Kesimpulan awal konseling',
+            'laporan_rekomendasi' => 'Rekomendasi awal konseling',
+            'laporan_status_penanganan' => StatusPenanganan::SELESAI_TERATASI,
+            'laporan_catatan_tambahan' => 'Catatan penting yang tidak boleh hilang',
+        ])->assertOk();
+
+        $this->assertSame('Catatan penting yang tidak boleh hilang', $row->fresh()->laporan_catatan_tambahan);
+
+        // Edit lagi TANPA mengirim field laporan_catatan_tambahan sama
+        // sekali — catatan lama harus tetap utuh, bukan berubah jadi '-'.
+        $this->putJson("/api/konseling/{$row->id}/laporan", [
+            'laporan_kesimpulan' => 'Kesimpulan direvisi',
+        ])->assertOk();
+
+        $this->assertSame('Catatan penting yang tidak boleh hilang', $row->fresh()->laporan_catatan_tambahan);
+        $this->assertSame('Kesimpulan direvisi', $row->fresh()->laporan_kesimpulan);
+    }
+
+    /**
+     * Laporan PERTAMA yang tidak mengirim laporan_catatan_tambahan sama
+     * sekali tetap harus default ke '-' (belum ada nilai lama untuk
+     * dipertahankan).
+     */
+    public function test_laporan_pertama_tanpa_catatan_default_strip(): void
+    {
+        [$row, $guru] = $this->buatKonselingSiapLaporan();
+        Sanctum::actingAs($guru, ['guru']);
+
+        $this->putJson("/api/konseling/{$row->id}/laporan", [
+            'laporan_kesimpulan' => 'Kesimpulan awal konseling',
+            'laporan_rekomendasi' => 'Rekomendasi awal konseling',
+            'laporan_status_penanganan' => StatusPenanganan::SELESAI_TERATASI,
+        ])->assertOk();
+
+        $this->assertSame('-', $row->fresh()->laporan_catatan_tambahan);
     }
 }

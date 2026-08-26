@@ -371,12 +371,38 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
           var opts = kelasOptions.filter(function (k) { return k.indexOf(grade + ' ') === 0 || k.indexOf(grade + ' -') === 0; });
           var row = document.createElement('div');
           row.className = 'absen-map-row';
-          var sel = '<select data-idx="' + idx + '"><option value="">— Pilih kelas sistem —</option>';
+
+          var info = document.createElement('div');
+          info.style.flex = '1';
+          var strong = document.createElement('strong');
+          strong.textContent = sec.label;
+          var span = document.createElement('span');
+          span.style.color = '#888';
+          span.textContent = sec.siswa.length + ' siswa · sheet ' + sec.sheet;
+          info.appendChild(strong);
+          info.appendChild(document.createElement('br'));
+          info.appendChild(span);
+
+          // kelasOptions (opts) berasal dari daftar kelas sistem sisi
+          // server (bukan dari file upload), tetap dibuat lewat
+          // createElement untuk konsistensi dan supaya seluruh baris ini
+          // tidak lagi memakai innerHTML sama sekali.
+          var sel = document.createElement('select');
+          sel.setAttribute('data-idx', idx);
+          var placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = '— Pilih kelas sistem —';
+          sel.appendChild(placeholder);
           opts.forEach(function (k) {
-            sel += '<option value="' + k + '"' + (k === dugaan ? ' selected' : '') + '>' + k + '</option>';
+            var opt = document.createElement('option');
+            opt.value = k;
+            opt.textContent = k;
+            if (k === dugaan) opt.selected = true;
+            sel.appendChild(opt);
           });
-          sel += '</select>';
-          row.innerHTML = '<div style="flex:1"><strong>' + sec.label + '</strong><br><span style="color:#888">' + sec.siswa.length + ' siswa · sheet ' + sec.sheet + '</span></div>' + sel;
+
+          row.appendChild(info);
+          row.appendChild(sel);
           map.appendChild(row);
         });
         document.getElementById('absenStep1').style.display = 'none';

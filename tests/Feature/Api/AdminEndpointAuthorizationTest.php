@@ -9,12 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi: "endpoint akun/siswa/riwayat-kelas hanya berada di
- * bawah auth:sanctum tanpa cek role — token siswa yang sah bisa mencapai
- * fungsi admin". Sekarang endpoint tersebut wajib ability:admin (akun) atau
- * ability:guru,kepsek,admin (siswa/riwayat-kelas).
- */
 class AdminEndpointAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
@@ -62,13 +56,6 @@ class AdminEndpointAuthorizationTest extends TestCase
         ])->assertForbidden();
     }
 
-    /**
-     * PERBAIKAN (revisi 24 Agustus 2026, poin 10): Guru BK sekarang BOLEH
-     * membuat master siswa lewat API (disamakan dengan jalur Web yang
-     * memang sudah lama memberi kemampuan ini), tapi tidak boleh
-     * menentukan passwordnya — dipaksa server = NIS berapa pun yang
-     * dikirim di body.
-     */
     public function test_guru_token_can_list_and_create_siswa_but_not_set_password(): void
     {
         $guru = GuruBk::factory()->create();

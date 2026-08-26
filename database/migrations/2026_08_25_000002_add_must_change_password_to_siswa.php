@@ -5,20 +5,6 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * PERBAIKAN (revisi 25 Agustus 2026, poin 11): sebelumnya tidak ada
- * mekanisme apa pun yang memaksa siswa mengganti password default.
- * Password awal siswa SELALU di-set = NIS sendiri (lihat
- * Api/SiswaController@create/@importRows dan Web/SiswaController@store/
- * @upsertSiswa) — dan NIS bukan rahasia: sering tertera di kartu
- * pelajar, absensi, rapor, dsb. Selama siswa tidak pernah mengganti
- * password-nya, akun tetap bisa diakses siapa pun yang tahu NIS-nya.
- *
- * Kolom must_change_password menandai akun siswa yang wajib mengganti
- * password sebelum boleh mengakses fitur lain (lihat
- * App\Http\Middleware\EnsurePasswordChanged untuk API dan
- * App\Http\Middleware\RoleAuth untuk web).
- */
 return new class extends Migration
 {
     public function up(): void

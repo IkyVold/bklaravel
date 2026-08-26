@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\GuruBk;
 use App\Models\Konseling;
+use App\Models\Siswa;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Satu-satunya sumber aturan bentrok jadwal konseling — dipakai oleh
@@ -12,15 +15,6 @@ use App\Models\Konseling;
  */
 class ScheduleService
 {
-    /**
-     * PERBAIKAN (revisi 24 Agustus 2026, poin 11): sebelumnya bentrok hanya
-     * dideteksi kalau jam MULAI persis sama (where('jam', $jam)). Kalau
-     * sesi berdurasi 60 menit, sesi jam 10.00 dan sesi jam 10.30 jelas
-     * overlap tapi tidak akan terdeteksi. Sesi tanpa 'durasi_menit' terisi
-     * (data lama, atau jalur yang belum mengirim durasi) dianggap memakai
-     * durasi default ini — sama seperti pola DEFAULT_DURATION_MINUTES yang
-     * sudah dipakai JadwalRutinController untuk slot tanpa jam_selesai.
-     */
     public const DEFAULT_DURATION_MINUTES = 60;
 
     /**
@@ -40,30 +34,6 @@ class ScheduleService
         ?int $durasiMenit = null,
         ?int $excludeId = null
     ): bool {
-        // PENTING: gunakan whereDate(), bukan where('tanggal', ...). Kolom
-        // 'tanggal' di-cast sebagai 'date' pada model Konseling, dan Eloquent
-        // secara default menyimpan cast tanggal dengan format lengkap
-        // "Y-m-d H:i:s" (bukan "Y-m-d") kecuali format eksplisit diberikan.
-        // Perbandingan string mentah where('tanggal', 'Y-m-d') tidak akan
-        // pernah cocok dengan nilai tersimpan "Y-m-d 00:00:00", sehingga
-        // bentrok jadwal tidak pernah terdeteksi. whereDate() membandingkan
-        // hanya bagian tanggalnya sehingga aman terhadap format penyimpanan.
-        //
-        // Filter jam TIDAK lagi dilakukan di query ini (lihat poin 11 di
-        // atas) — kandidat yang cocok siswa/guru pada tanggal tsb diambil
-        // semua, lalu overlap interval dihitung di PHP seperti
-        // JadwalRutinController::assertNoOverlap().
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 8): dulu filter guru di
-        // sini pakai OR independen (guru_id COCOK ATAU guru_bk COCOK NAMA),
-        // persis pola bug yang sama dengan listByGuru() (poin 7) dan
-        // ownership check lama (poin 24 Agustus, poin 8) — kalau ada dua
-        // Guru BK dengan nama sama persis, jadwal Guru A bisa dianggap
-        // bentrok dengan jadwal Guru B hanya karena namanya sama, padahal
-        // guru_id keduanya berbeda. Sekarang begitu $guruId diberikan, itu
-        // SATU-SATUNYA sumber kebenaran untuk mencocokkan guru; fallback
-        // nama HANYA dipakai untuk mencocokkan baris lama yang guru_id-nya
-        // memang null (data sebelum kolom guru_id ada) — konsisten dengan
-        // guruOwnsKonseling() di AuthorizesBk.
         $query = Konseling::whereDate('tanggal', $tanggal)
             ->whereNotIn('status', ['Dibatalkan', 'Ditolak', 'Selesai'])
             ->where(function ($q) use ($siswaId, $guruId, $guruBk) {
@@ -129,5 +99,31 @@ class ScheduleService
             $durasiMenit ?? $row->durasi_menit,
             $row->id
         );
+    }
+
+    public function runLocked(?int $guruId, ?int $siswaId, \Closure $callback)
+    {
+        return DB::transaction(function () use ($guruId, $siswaId, $callback) {
+            $locks = [];
+            if ($guruId) {
+                $locks[] = [GuruBk::class, $guruId];
+            }
+            if ($siswaId) {
+                $locks[] = [Siswa::class, $siswaId];
+            }
+
+            // Urutan tetap: model class (GuruBk sebelum Siswa secara
+            // alfabetis), lalu id menaik — mencegah deadlock antar
+            // transaksi yang saling bersilangan guru/siswa-nya.
+            usort($locks, function (array $a, array $b): int {
+                return $a[0] === $b[0] ? $a[1] <=> $b[1] : strcmp($a[0], $b[0]);
+            });
+
+            foreach ($locks as [$modelClass, $id]) {
+                $modelClass::where('id', $id)->lockForUpdate()->first();
+            }
+
+            return $callback();
+        });
     }
 }

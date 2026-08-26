@@ -8,14 +8,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup revisi 25 Agustus 2026, poin 11: "Tambahkan mekanisme pengguna
- * wajib ganti password default setelah berhasil login". Password awal
- * siswa selalu = NIS sendiri (lihat SiswaController@create/@importRows di
- * Api maupun Web) — dan NIS bukan rahasia, sehingga siswa yang tidak
- * pernah mengganti password tetap rentan diakses siapa pun yang tahu
- * NIS-nya.
- */
 class MustChangePasswordTest extends TestCase
 {
     use RefreshDatabase;
@@ -56,9 +48,6 @@ class MustChangePasswordTest extends TestCase
         $siswa = Siswa::factory()->create(['must_change_password' => true]);
         Sanctum::actingAs($siswa, ['siswa']);
 
-        // PEMBARUAN (revisi 25 Agustus 2026, poin 13): 'current_password'
-        // sekarang wajib — factory membuat siswa dengan password default
-        // 'password' (lihat SiswaFactory).
         $this->putJson('/api/profile/' . $siswa->nis, [
             'current_password' => 'password',
             'password' => 'password_baru_pilihan_sendiri',
@@ -159,9 +148,6 @@ class MustChangePasswordTest extends TestCase
             'auth_user' => ['nis' => $siswa->nis, 'nama' => $siswa->nama, 'must_change_password' => true],
         ])->put(route('siswa.profil.update'), [
             'edit_field' => 'password',
-            // PEMBARUAN (revisi 25 Agustus 2026, poin 13): 'current_password'
-            // sekarang wajib — factory membuat siswa dengan password
-            // default 'password' (lihat SiswaFactory).
             'current_password' => 'password',
             'edit_value' => 'password_baru_web',
             'edit_value_confirmation' => 'password_baru_web',

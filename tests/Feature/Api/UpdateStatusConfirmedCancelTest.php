@@ -9,15 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * PERBAIKAN (revisi 25 Agustus 2026, poin 5): dulu PUT
- * /api/konseling/{id}/status tidak memeriksa status_konfirmasi sama
- * sekali, sehingga konsultasi yang sudah dikonfirmasi (status=Proses,
- * status_konfirmasi=Dikonfirmasi/Terkonfirmasi/Tervalidasi) masih bisa
- * diubah menjadi Dibatalkan lewat API — padahal jalur web
- * (Web/KonselingController@batalGuru) sudah menolaknya. Test ini
- * memastikan endpoint API sekarang menegakkan aturan yang sama.
- */
 class UpdateStatusConfirmedCancelTest extends TestCase
 {
     use RefreshDatabase;

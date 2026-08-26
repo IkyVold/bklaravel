@@ -6,11 +6,6 @@ use App\Models\GuruBk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi: JadwalRutinController dulu hanya memvalidasi format
- * jam, bukan interval-nya — slot 10.00-09.00 atau dua slot yang saling
- * overlap (08.00-10.00 & 09.00-11.00) masih bisa tersimpan.
- */
 class JadwalRutinOverlapTest extends TestCase
 {
     use RefreshDatabase;

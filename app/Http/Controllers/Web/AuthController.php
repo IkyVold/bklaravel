@@ -54,6 +54,14 @@ class AuthController extends Controller
         $request->validate(['nis' => 'required|string']);
         $nis = $request->input('nis');
 
+        $ipKey = $this->auth->ipThrottleKey($request);
+        if ($this->auth->tooManyIpAttempts($ipKey)) {
+            $seconds = $this->auth->ipAvailableIn($ipKey);
+            return back()->withInput()->withErrors([
+                'login' => "Terlalu banyak percobaan login dari jaringan ini. Coba lagi dalam {$seconds} detik.",
+            ]);
+        }
+
         // Burst throttle — identik dengan jalur API supaya login web tidak
         // bisa dipakai sebagai jalur brute force tanpa batas.
         $throttleKey = $this->auth->throttleKey('siswa', $nis, $request);
@@ -67,6 +75,7 @@ class AuthController extends Controller
         $siswa = Siswa::where('nis', $nis)->first();
         if (!$siswa) {
             $this->auth->hitThrottle($throttleKey);
+            $this->auth->hitIpThrottle($ipKey);
             return back()->withInput()->withErrors(['login' => 'NIS atau password salah.']);
         }
 
@@ -82,6 +91,7 @@ class AuthController extends Controller
 
         if (!$siswa->verifyPassword($request->password)) {
             $this->auth->hitThrottle($throttleKey);
+            $this->auth->hitIpThrottle($ipKey);
             $this->auth->registerSiswaFailure($siswa);
 
             if ($this->auth->isSiswaLocked($siswa)) {
@@ -104,9 +114,6 @@ class AuthController extends Controller
             'nama' => $siswa->nama,
             'kelas' => $siswa->kelas,
             'foto' => $siswa->foto_profile,
-            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): disimpan di
-            // session supaya RoleAuth middleware bisa memeriksanya tanpa
-            // query DB tambahan di setiap request.
             'must_change_password' => (bool) $siswa->must_change_password,
         ]);
         Session::regenerate();
@@ -129,6 +136,14 @@ class AuthController extends Controller
             return back()->withInput()->withErrors(['login' => "Tabel {$table} belum ada."]);
         }
 
+        $ipKey = $this->auth->ipThrottleKey($request);
+        if ($this->auth->tooManyIpAttempts($ipKey)) {
+            $seconds = $this->auth->ipAvailableIn($ipKey);
+            return back()->withInput()->withErrors([
+                'login' => "Terlalu banyak percobaan login dari jaringan ini. Coba lagi dalam {$seconds} detik.",
+            ]);
+        }
+
         // Guru/Kepsek/Admin belum punya kolom lockout persisten, tetapi
         // tetap dilindungi burst throttle yang sama dengan API supaya
         // keamanan kedua jalur konsisten.
@@ -143,6 +158,7 @@ class AuthController extends Controller
         $user = $model::where('username', $username)->first();
         if (!$user || !($user->is_active ?? true) || !$user->verifyPassword($request->password)) {
             $this->auth->hitThrottle($throttleKey);
+            $this->auth->hitIpThrottle($ipKey);
             return back()->withInput()->withErrors(['login' => 'Username atau password salah.']);
         }
 

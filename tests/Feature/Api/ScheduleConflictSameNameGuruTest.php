@@ -9,15 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * PERBAIKAN (revisi 25 Agustus 2026, poin 8): ScheduleService::hasConflict()
- * dulu memfilter guru dengan OR independen (guru_id COCOK ATAU guru_bk
- * COCOK NAMA). Kalau ada dua Guru BK dengan nama sama persis, jadwal
- * milik Guru A bisa dianggap bentrok dengan permintaan jadwal Guru B
- * hanya karena namanya kebetulan sama, walau guru_id keduanya berbeda.
- * Sekarang begitu guru_id terisi, itu satu-satunya sumber kebenaran;
- * fallback nama hanya dipakai untuk data lama yang guru_id-nya null.
- */
 class ScheduleConflictSameNameGuruTest extends TestCase
 {
     use RefreshDatabase;

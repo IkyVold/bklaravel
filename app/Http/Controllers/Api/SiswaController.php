@@ -34,12 +34,6 @@ class SiswaController extends Controller
 
     public function create(Request $request): JsonResponse
     {
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' hanya
-        // wajib/dipakai untuk Admin. Guru BK boleh membuat siswa baru
-        // (rute ini sekarang 'ability:guru,admin'), tapi tidak boleh
-        // menentukan passwordnya sendiri — dipaksa = NIS, apa pun yang
-        // dikirim di body. Reset password siswa yang SUDAH ADA tetap
-        // hanya lewat Api/ProfileController (siswa sendiri atau Admin).
         $isAdmin = $this->isAdmin($request);
 
         $rules = [
@@ -60,11 +54,6 @@ class SiswaController extends Controller
         if (empty($data['password'])) {
             $data['password'] = $data['nis'];
         }
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): password awal siswa
-        // selalu ditentukan oleh orang lain (Guru BK/Admin), bukan siswa
-        // itu sendiri — baik itu default (= NIS) maupun password custom
-        // dari Admin. Tandai wajib ganti password supaya siswa dipaksa
-        // menentukan password sendiri saat login pertama kali.
         $data['must_change_password'] = true;
 
         $siswa = Siswa::create($data);
@@ -83,12 +72,6 @@ class SiswaController extends Controller
             return response()->json(['success' => false, 'message' => 'Data kosong'], 400);
         }
 
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): sama seperti create()
-        // di atas — Guru BK boleh import siswa (rute ini sekarang
-        // 'ability:guru,admin'), tapi field 'password' pada tiap baris
-        // diabaikan sepenuhnya kalau pemanggil bukan Admin; password
-        // selalu = NIS. Hanya Admin yang boleh menyertakan password custom
-        // per baris import.
         $isAdmin = $this->isAdmin($request);
 
         $inserted = 0;
@@ -119,10 +102,6 @@ class SiswaController extends Controller
                     'kelas' => $kelas,
                     'password' => $password,
                     'jenis_kelamin' => $row['jenis_kelamin'] ?? null,
-                    // PERBAIKAN (revisi 25 Agustus 2026, poin 11): sama
-                    // seperti create() di atas — password awal (default
-                    // NIS atau custom dari Admin) bukan pilihan siswa
-                    // sendiri, jadi wajib diganti saat login pertama.
                     'must_change_password' => true,
                 ]);
                 $inserted++;

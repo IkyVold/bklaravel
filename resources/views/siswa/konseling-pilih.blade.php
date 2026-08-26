@@ -29,19 +29,6 @@
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 16v-4M12 8h.01" />
             </svg>
-            {{--
-                PERBAIKAN (revisi 24 Agustus 2026 — "Klaim kerahasiaan vs akses
-                Kepala Sekolah"): kalimat sebelumnya ("Data Anda hanya dapat
-                diakses oleh guru yang Anda pilih") tidak sesuai fakta — Kepala
-                Sekolah & Admin memang bisa melihat data konseling untuk
-                monitoring (lihat AuthorizesBk::assertCanViewKonseling()). Yang
-                benar-benar dibatasi hanya siswa & Guru BK terpilih adalah ISI
-                konsultasi (deskripsi masalah, kesimpulan, rekomendasi) — lihat
-                Konseling::untukMonitoringKepsek() yang menyembunyikan field
-                tersebut dari Kepsek. Kalimat diubah supaya sesuai dengan
-                implementasi, bukan sebaliknya mengubah implementasi mengikuti
-                kalimat lama.
-            --}}
             Isi konsultasi Anda (deskripsi masalah, kesimpulan, dan rekomendasi) bersifat rahasia dan
             hanya dapat dilihat oleh Anda dan guru BK yang Anda pilih. Kepala Sekolah dapat melihat
             data administratif (jadwal dan status) untuk keperluan monitoring, tanpa isi konsultasi.

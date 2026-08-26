@@ -75,13 +75,7 @@
     $jamOptions = [];
     for ($h = 7; $h <= 17; $h++) foreach (['00','30'] as $m) $jamOptions[] = sprintf('%02d:%s', $h, $m);
     $guruNama = $row->guru_bk ?? (session('auth_user')['nama'] ?? 'Guru BK');
-    $statusPenangananOptions = [
-        'Selesai - Masalah Teratasi' => '✅ Selesai - Masalah Teratasi',
-        'Monitoring' => '📊 Perlu Monitoring Lanjutan',
-        'Rujuk' => '🔄 Dirujuk ke pihak lain (Guru Mapel/Wali Kelas)',
-        'Rujuk BK Lain' => '👨‍🏫 Dirujuk ke Guru BK Lain',
-        'Orang Tua' => '👨‍👩‍👧 Perlu keterlibatan Orang Tua',
-    ];
+    $statusPenangananOptions = \App\Support\StatusPenanganan::LABELS;
     $lanjutanDefault = now()->addDays(7)->format('Y-m-d');
 ?>
 

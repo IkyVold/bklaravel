@@ -21,32 +21,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
 
-// PERBAIKAN (revisi 25 Agustus 2026, poin 11): 'password.changed' dipasang
-// di level grup supaya berlaku untuk SELURUH endpoint API yang butuh
-// autentikasi. Middleware ini hanya benar-benar bertindak kalau
-// pengguna adalah Siswa dengan must_change_password = true — Guru BK/
-// Kepsek/Admin selalu lolos tanpa terpengaruh (lihat
-// App\Http\Middleware\EnsurePasswordChanged untuk detail & daftar
-// endpoint yang dikecualikan untuk siswa).
-Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
-    // PERBAIKAN (revisi 24 Agustus 2026, poin 9): '/logout' dulu berada DI
-    // LUAR grup 'auth:sanctum'. AuthController::logout() memanggil
-    // $request->user()?->currentAccessToken()?->delete() — tapi tanpa
-    // middleware auth:sanctum, Bearer token pada request tidak pernah
-    // di-resolve jadi authenticated user sama sekali, jadi $request->user()
-    // selalu null dan tidak ada token yang benar-benar dihapus. Endpoint
-    // tetap menjawab "Logout berhasil" (karena logout() tidak pernah
-    // mengecek null-nya), padahal token pemanggil masih berlaku penuh.
-    // Sekarang '/logout' wajib lewat auth:sanctum lebih dulu, sama seperti
-    // endpoint lain yang butuh identitas token.
-    //
-    // '/logout-public' (dulu ada di luar sini juga, memanggil controller
-    // yang sama) DIHAPUS: karena tanpa auth:sanctum ia tidak pernah benar-
-    // benar mencabut token apa pun, endpoint itu hanya memberi ilusi logout
-    // berhasil. Kalau ke depan memang dibutuhkan endpoint "logout" yang
-    // aman dipanggil tanpa token valid (mis. token sudah kedaluwarsa di
-    // sisi client), itu cukup ditangani di client (buang token tersimpan),
-    // tidak perlu endpoint server yang berpura-pura mencabut token.
+Route::middleware(['auth:sanctum', 'account.active', 'password.changed'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
@@ -57,16 +32,6 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::get('/riwayat-kelas/{nis}/aktif', [RiwayatKelasController::class, 'getAktif']);
         Route::get('/riwayat-kelas/{nis}', [RiwayatKelasController::class, 'list']);
     });
-    // PERBAIKAN (revisi 24 Agustus 2026, poin 10): dulu create/import-rows
-    // siswa hanya 'ability:admin', padahal jalur Web sudah lama memberi
-    // Guru BK kemampuan tambah & import siswa (kelola data master
-    // operasional adalah tugas Guru BK sehari-hari). Sekarang disamakan:
-    // Guru BK juga boleh lewat API. Yang TETAP dikunci adalah field
-    // password — lihat SiswaController@create/@importRows: kalau
-    // pemanggil Guru BK, password SELALU dipaksa = NIS, tidak peduli apa
-    // yang dikirim client. Hanya Admin yang boleh menentukan password
-    // custom saat membuat siswa (sama seperti Admin tetap satu-satunya
-    // staff yang boleh reset password siswa yang sudah ada, poin 1).
     Route::middleware('ability:guru,admin')->group(function () {
         Route::post('/siswa', [SiswaController::class, 'create']);
         Route::post('/siswa/import-rows', [SiswaController::class, 'importRows']);
@@ -93,17 +58,6 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::get('/konseling-bk', [KonselingController::class, 'listByGuru']);
     Route::get('/konseling/detail/{id}', [KonselingController::class, 'getDetail']);
     Route::get('/konseling/{nis}', [KonselingController::class, 'listBySiswa']);
-    // PERBAIKAN (revisi 25 Agustus 2026, poin 4): dulu POST /api/konseling
-    // tidak punya middleware 'ability' sama sekali dan hanya bergantung
-    // pada assertSiswaOwns() di controller — yang justru SENGAJA
-    // meloloskan seluruh staff (Guru BK, Kepsek, Admin) untuk keperluan
-    // ownership check di endpoint LAIN. Akibatnya Guru BK/Kepsek/Admin
-    // bisa mengajukan konsultasi reguler atas nama siswa mana pun lewat
-    // endpoint ini, padahal Guru BK sudah punya endpoint khusus
-    // (/api/konseling/walkin) dan Kepsek/Admin tidak punya alasan bisnis
-    // untuk mengajukan konsultasi. Sekarang dikunci 'ability:siswa' di
-    // level route (pertahanan pertama) DAN di controller store() (lihat
-    // komentar di dalamnya untuk pertahanan kedua).
     Route::middleware('ability:siswa')->post('/konseling', [KonselingController::class, 'store']);
     Route::post('/konseling/walkin', [KonselingController::class, 'walkin']);
     Route::put('/konseling/{id}/konfirmasi', [KonselingController::class, 'konfirmasi']);

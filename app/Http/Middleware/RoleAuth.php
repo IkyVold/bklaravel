@@ -2,6 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Admin;
+use App\Models\GuruBk;
+use App\Models\Kepsek;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
@@ -9,6 +12,17 @@ use Symfony\Component\HttpFoundation\Response;
 
 class RoleAuth
 {
+    /**
+     * Peta role -> model, khusus role yang punya kolom is_active
+     * (Guru BK, Kepsek, Admin). Siswa sengaja tidak disertakan karena
+     * tidak memiliki kolom is_active sama sekali.
+     */
+    private const ROLE_MODELS = [
+        'guru' => GuruBk::class,
+        'kepsek' => Kepsek::class,
+        'admin' => Admin::class,
+    ];
+
     /**
      * @param  string  ...$roles  Allowed roles, e.g. 'guru','admin'
      */
@@ -24,16 +38,19 @@ class RoleAuth
             abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
 
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): siswa yang akunnya
-        // masih ditandai must_change_password (password default = NIS,
-        // atau baru saja direset Admin) tidak boleh mengakses halaman lain
-        // sebelum mengganti password-nya sendiri. Hanya halaman profil
-        // (tempat form ganti password berada) dan logout yang dikecualikan
-        // — logout sudah berada di luar grup middleware 'role:siswa' ini,
-        // jadi tidak perlu disebut di whitelist. Guru/Kepsek/Admin TIDAK
-        // terkena pengecekan ini: mereka belum punya mekanisme self-service
-        // ganti password sama sekali, jadi memblokir mereka di sini hanya
-        // akan mengunci akun tanpa jalan keluar.
+        $authId = Session::get('auth_id');
+        $modelClass = self::ROLE_MODELS[$role] ?? null;
+        if ($modelClass && $authId) {
+            $user = $modelClass::find($authId);
+            if (!$user || !$user->is_active) {
+                Session::flush();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+                return redirect()->route('login')
+                    ->withErrors(['login' => 'Akun ini sudah dinonaktifkan. Silakan hubungi Admin.']);
+            }
+        }
+
         if ($role === 'siswa') {
             $authUser = Session::get('auth_user', []);
             $exemptRoutes = ['siswa.profil', 'siswa.profil.update'];

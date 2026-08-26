@@ -12,19 +12,6 @@ use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi 25 Agustus 2026 #10: "Guru/Kepsek masih terlalu luas
- * dalam mengubah profil siswa lewat API". Sebelumnya seluruh staff
- * (Guru BK, Kepsek, Admin) lolos assertSiswaOwnsNis() pada
- * update()/updateFoto()/deleteFoto(), sehingga Guru BK maupun Kepala
- * Sekolah bisa mengubah/menghapus data & foto siswa mana pun.
- *
- * Pembagian akses sekarang:
- *  - Siswa   : boleh mengubah profil & foto miliknya sendiri.
- *  - Admin   : master akademik — boleh mengubah profil & foto siswa mana pun.
- *  - Guru BK : hanya baca (GET), ditolak di endpoint tulis.
- *  - Kepsek  : hanya baca (GET), ditolak di endpoint tulis — termasuk kelas & foto.
- */
 class ProfileStaffScopeTest extends TestCase
 {
     use RefreshDatabase;

@@ -9,14 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi 25 Agustus 2026 #14: "Attribution informasi BK masih
- * dapat dipalsukan". Dulu 'guru_bk' diterima langsung sebagai string bebas
- * dari client, sehingga Guru A bisa mengirim guru_bk = nama Guru B dan
- * informasi tercatat seolah-olah dibuat Guru B. Sekarang identitas penulis
- * tidak pernah diterima dari client: Guru BK dipaksa = nama akun yang
- * login, Admin wajib menunjuk guru_id yang valid & aktif.
- */
 class InformasiAttributionTest extends TestCase
 {
     use RefreshDatabase;

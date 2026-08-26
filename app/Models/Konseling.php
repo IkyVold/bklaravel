@@ -75,40 +75,6 @@ class Konseling extends Model
         return in_array((string) ($this->status_konfirmasi ?? ''), self::STATUS_KONFIRMASI_TERKONFIRMASI, true);
     }
 
-    /**
-     * PERBAIKAN (revisi 24 Agustus 2026 — "Klaim kerahasiaan vs akses
-     * Kepala Sekolah"): halaman siswa/konseling-pilih menjanjikan "Data
-     * Anda hanya dapat diakses oleh guru yang Anda pilih", tapi
-     * sebelumnya Kepala Sekolah (Web\KepsekController::show() maupun
-     * Api\KonselingController::getDetail()) menerima objek Konseling
-     * UTUH — termasuk deskripsi masalah, kesimpulan, rekomendasi, catatan
-     * laporan, dan catatan walk-in. Itu ISI/narasi substansi konsultasi,
-     * bukan sekadar metadata, sehingga klaim di atas secara faktual salah
-     * untuk Kepsek.
-     *
-     * Method ini adalah SATU-SATUNYA sumber kebenaran untuk "field apa
-     * saja yang aman dilihat Kepsek" — dipakai oleh Web & API sekaligus
-     * supaya daftar field yang disembunyikan tidak pernah berbeda antara
-     * kedua jalur (jangan duplikasi daftar field di controller manapun).
-     * Kepsek tetap boleh melihat metadata administratif (siapa, guru
-     * mana, kapan, status, status penanganan) untuk keperluan monitoring/
-     * oversight — itu bukan bagian dari "isi konsultasi" yang dijanjikan
-     * rahasia. Yang SENGAJA tidak disertakan: deskripsi, laporan_kesimpulan,
-     * laporan_rekomendasi, laporan_catatan_tambahan, catatan_walkin.
-     *
-     * PERBAIKAN (revisi 25 Agustus 2026, poin 3): dulu di sini tertulis
-     * "Admin ... TIDAK memakai method ini — tetap menerima data lengkap",
-     * dengan alasan hanya Kepsek yang disebut eksplisit dalam klaim
-     * kerahasiaan UI. Tapi UI (resources/views/siswa/konseling-pilih.blade.php)
-     * menjanjikan isi konsultasi hanya untuk siswa & Guru BK yang dipilih —
-     * tidak mengecualikan Admin. Kalau Admin dianggap administrator
-     * teknis/sistem (bukan bagian dari sesi konseling), tidak ada alasan
-     * bisnis bagi Admin membaca substansi kasus. Sekarang endpoint API
-     * (lihat Api/KonselingController::getDetail()/listAll()/listBySiswa())
-     * memakai method ini untuk Admin JUGA, bukan hanya Kepsek. Guru BK
-     * pemilik dan siswa pemilik TIDAK memakai method ini — mereka tetap
-     * menerima data lengkap, karena merekalah peserta sesi yang sebenarnya.
-     */
     public function untukMonitoringKepsek(): array
     {
         return [

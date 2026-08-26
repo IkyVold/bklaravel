@@ -9,12 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi: sebelum ada ScheduleService, walk-in dan jadwal
- * rutin tidak dicek bentrok sama sekali, dan aturan bentrok antar
- * controller bisa berbeda-beda. Sekarang satu Guru BK tidak boleh punya
- * dua sesi aktif pada tanggal & jam yang sama.
- */
 class ScheduleConflictTest extends TestCase
 {
     use RefreshDatabase;
@@ -103,12 +97,6 @@ class ScheduleConflictTest extends TestCase
         ])->assertCreated();
     }
 
-    /**
-     * PERBAIKAN (revisi 24 Agustus 2026, poin 11): dulu bentrok hanya
-     * dideteksi kalau jam MULAI persis sama. Sesi jam 10.00 (durasi default
-     * 60 menit, berakhir 11.00) dan sesi baru jam 10.30 jelas overlap
-     * meski jam mulainya beda — persis contoh dosen penguji.
-     */
     public function test_pengajuan_overlap_di_tengah_sesi_lain_ditolak(): void
     {
         $guru = GuruBk::factory()->create();

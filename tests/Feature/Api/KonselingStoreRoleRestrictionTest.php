@@ -10,18 +10,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi 25 Agustus 2026 #4: "Endpoint pengajuan konsultasi
- * API terlalu luas untuk staff". Sebelumnya POST /api/konseling (pengajuan
- * konsultasi REGULER oleh siswa) tidak punya middleware ability sama
- * sekali dan hanya bergantung pada assertSiswaOwns() di controller — yang
- * memang sengaja meloloskan seluruh staff (Guru BK, Kepsek, Admin) untuk
- * ownership check. Akibatnya staff bisa membuat pengajuan konsultasi
- * reguler atas nama siswa mana pun, padahal Guru BK sudah punya endpoint
- * khusus (/api/konseling/walkin) dan Kepsek/Admin tidak punya alasan
- * bisnis untuk itu. Sekarang endpoint ini dikunci di dua lapis: middleware
- * route 'ability:siswa' dan pengecekan eksplisit isStaff() di controller.
- */
 class KonselingStoreRoleRestrictionTest extends TestCase
 {
     use RefreshDatabase;

@@ -6,14 +6,6 @@ use App\Models\Siswa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/**
- * Menutup poin revisi 25 Agustus 2026 #13: "Ganti password siswa tidak
- * meminta password lama" — jalur web (modal edit_field di halaman profil
- * siswa). Kalau session siswa berhasil diambil orang lain, tanpa
- * pengecekan ini attacker bisa langsung mengganti password dan mengunci
- * pemilik asli dari akunnya sendiri. Lihat juga versi API-nya di
- * tests/Feature/Api/ProfilePasswordAuthorizationTest.php.
- */
 class ProfilePasswordAuthorizationTest extends TestCase
 {
     use RefreshDatabase;

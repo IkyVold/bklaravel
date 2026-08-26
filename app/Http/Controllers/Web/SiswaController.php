@@ -70,14 +70,6 @@ class SiswaController extends Controller
 
     public function store(Request $request)
     {
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' SENGAJA
-        // dihapus dari rules. Dulu Guru BK bisa mengisi password custom
-        // saat menambah siswa baru lewat form ini — sekarang password
-        // SELALU di-set = NIS saat pembuatan, sama seperti jalur
-        // import (upsertSiswa()). Guru BK tidak lagi bisa menentukan atau
-        // mengubah password siswa lewat rute mana pun di bawah role:guru;
-        // reset password siswa hanya lewat Admin atau siswa itu sendiri
-        // (lihat Api/ProfileController, poin 1).
         $data = $request->validate([
             'nis' => 'required|string|max:20|unique:siswa,nis',
             'nama' => 'required|string|max:100',
@@ -88,9 +80,6 @@ class SiswaController extends Controller
             return back()->withInput()->withErrors(['kelas' => 'Kelas tidak valid']);
         }
         $data['password'] = $data['nis'];
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): password awal siswa
-        // di jalur ini selalu = NIS dan ditentukan Guru BK, bukan siswa
-        // sendiri — wajib diganti saat login pertama.
         $data['must_change_password'] = true;
         $data['jenis_kelamin'] = $this->normalizeJk($data['jenis_kelamin'] ?? null);
         Siswa::create($data);
@@ -110,13 +99,6 @@ class SiswaController extends Controller
     public function update(Request $request, int $id)
     {
         $siswa = Siswa::findOrFail($id);
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' SENGAJA
-        // dihapus dari rules — sebelumnya Guru BK bisa reset password
-        // siswa mana pun lewat form edit data master ini, celah yang
-        // sama persis dengan yang sudah ditutup di Api/ProfileController
-        // (poin 1). Guru BK di sini hanya boleh mengubah data
-        // administratif (nama/NIS/kelas/jenis kelamin), tidak pernah
-        // password.
         $data = $request->validate([
             'nis' => 'required|string|max:20|unique:siswa,nis,' . $id,
             'nama' => 'required|string|max:100',
@@ -401,9 +383,6 @@ class SiswaController extends Controller
             'kelas' => $kelas,
             'jenis_kelamin' => $jk,
             'password' => $nis,
-            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): sama seperti
-            // store() di atas — password default = NIS wajib diganti saat
-            // login pertama.
             'must_change_password' => true,
         ]);
         return 'inserted';

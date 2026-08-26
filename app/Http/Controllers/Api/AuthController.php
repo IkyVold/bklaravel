@@ -47,6 +47,15 @@ class AuthController extends Controller
             return response()->json(['success' => false, 'message' => 'NIS dan password harus diisi'], 400);
         }
 
+        $ipKey = $this->auth->ipThrottleKey($request);
+        if ($this->auth->tooManyIpAttempts($ipKey)) {
+            $seconds = $this->auth->ipAvailableIn($ipKey);
+            return response()->json([
+                'success' => false,
+                'message' => "Terlalu banyak percobaan login dari jaringan ini. Coba lagi dalam {$seconds} detik.",
+            ], 429);
+        }
+
         // Burst throttle — sama dengan jalur web, berlaku sebelum apa pun
         // di-query supaya percobaan yang sangat cepat/berulang tetap
         // dibatasi walau NIS-nya berbeda-beda.
@@ -62,6 +71,7 @@ class AuthController extends Controller
         $siswa = Siswa::where('nis', $nis)->first();
         if (!$siswa) {
             $this->auth->hitThrottle($throttleKey);
+            $this->auth->hitIpThrottle($ipKey);
             return response()->json(['success' => false, 'message' => 'NIS atau password salah'], 401);
         }
 
@@ -75,6 +85,7 @@ class AuthController extends Controller
 
         if (!$siswa->verifyPassword($password)) {
             $this->auth->hitThrottle($throttleKey);
+            $this->auth->hitIpThrottle($ipKey);
             $this->auth->registerSiswaFailure($siswa);
 
             if ($this->auth->isSiswaLocked($siswa)) {
@@ -97,11 +108,6 @@ class AuthController extends Controller
             'success' => true,
             'token' => $token,
             'role' => 'siswa',
-            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): frontend perlu
-            // tahu di respons login ini kalau siswa wajib mengganti
-            // password default sebelum bisa memakai fitur lain — endpoint
-            // lain akan menolak (423) lewat EnsurePasswordChanged middleware
-            // selama flag ini masih true.
             'must_change_password' => (bool) $siswa->must_change_password,
             'user' => [
                 'id' => $siswa->id,
@@ -119,6 +125,15 @@ class AuthController extends Controller
             return response()->json(['success' => false, 'message' => 'Username dan password harus diisi'], 400);
         }
 
+        $ipKey = $this->auth->ipThrottleKey($request);
+        if ($this->auth->tooManyIpAttempts($ipKey)) {
+            $seconds = $this->auth->ipAvailableIn($ipKey);
+            return response()->json([
+                'success' => false,
+                'message' => "Terlalu banyak percobaan login dari jaringan ini. Coba lagi dalam {$seconds} detik.",
+            ], 429);
+        }
+
         // Guru/Kepsek/Admin belum punya kolom lockout persisten, tetapi
         // tetap dilindungi burst throttle yang sama dengan siswa & web,
         // supaya jalur ini juga tidak bebas dipakai brute force.
@@ -134,6 +149,7 @@ class AuthController extends Controller
         $user = $model::where('username', $username)->first();
         if (!$user || !$user->is_active || !$user->verifyPassword($password)) {
             $this->auth->hitThrottle($throttleKey);
+            $this->auth->hitIpThrottle($ipKey);
             return response()->json(['success' => false, 'message' => 'Username atau password salah'], 401);
         }
 

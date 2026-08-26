@@ -32,21 +32,6 @@ class InformasiController extends Controller
             'isi' => 'required|string',
         ];
 
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 14): dulu 'guru_bk'
-        // diterima langsung sebagai string bebas dari client
-        // ('guru_bk' => 'required|string|max:100'). Artinya Guru A bisa
-        // mengirim guru_bk = nama Guru B, dan informasi tercatat seolah-
-        // olah dibuat Guru B — integritas sumber informasi jadi tidak bisa
-        // dipercaya, terutama karena bisa dipakai sebagai basis knowledge
-        // chatbot. Sekarang identitas penulis TIDAK PERNAH diterima dari
-        // client:
-        //  - Guru BK: attribution dipaksa = nama akun yang sedang login
-        //    (dari token, sama seperti pola di ChatController@send).
-        //  - Admin: attribution wajib eksplisit lewat 'guru_id' yang
-        //    menunjuk Guru BK yang benar-benar ada & aktif (bukan string
-        //    bebas) — proses "Admin membuat informasi atas nama Guru BK"
-        //    jadi jelas & terverifikasi server, sama seperti pola Admin
-        //    pada KonselingController@walkin.
         if ($this->isAdmin($request)) {
             $rules['guru_id'] = 'required|integer';
         }
@@ -60,6 +45,7 @@ class InformasiController extends Controller
         if ($this->isGuru($request)) {
             $user = $request->user();
             $data['guru_bk'] = $user->nama ?? 'Guru BK';
+            $data['guru_id'] = $user->id;
         } else {
             $guru = GuruBk::find($data['guru_id']);
             if (!$guru) {
@@ -69,8 +55,8 @@ class InformasiController extends Controller
                 return response()->json(['success' => false, 'message' => 'Guru BK tidak aktif'], 400);
             }
             $data['guru_bk'] = $guru->nama;
+            $data['guru_id'] = $guru->id;
         }
-        unset($data['guru_id']);
 
         $row = InformasiBk::create($data);
         return response()->json(['success' => true, 'data' => $row], 201);
@@ -87,14 +73,8 @@ class InformasiController extends Controller
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
 
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 14): 'guru_bk' dihapus
-        // dari daftar field yang bisa diubah lewat sini — sebelumnya baris
-        // ini juga membolehkan siapa pun (Guru mana pun / Admin) mengganti
-        // attribution informasi milik orang lain jadi nama sembarang lewat
-        // update(), bukan hanya lewat create(). Mengedit ISI informasi
-        // tidak mengubah siapa penulis aslinya; reassignment authorship
-        // (kalau memang dibutuhkan suatu saat) perlu endpoint eksplisit
-        // tersendiri, bukan lewat field bebas di update konten seperti ini.
+        $this->assertGuruCanManageInformasi($request, $row);
+
         $row->fill($request->only(['judul', 'kategori', 'isi']))->save();
         return response()->json(['success' => true, 'data' => $row]);
     }
@@ -109,6 +89,9 @@ class InformasiController extends Controller
         if (!$row) {
             return response()->json(['success' => false, 'message' => 'Tidak ditemukan'], 404);
         }
+
+        $this->assertGuruCanManageInformasi($request, $row);
+
         $row->delete();
         return response()->json(['success' => true, 'message' => 'Dihapus']);
     }

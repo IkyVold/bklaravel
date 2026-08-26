@@ -21,8 +21,6 @@ class AkunController extends Controller
 
     public function guruStore(Request $request)
     {
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
-        // min:8 — disamakan dengan Api/AkunController::createGuru().
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:guru_bk,username',
             'password' => 'required|string|min:8',
@@ -44,9 +42,6 @@ class AkunController extends Controller
     public function guruUpdate(Request $request, int $id)
     {
         $row = GuruBk::findOrFail($id);
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
-        // min:8 pada update juga, supaya tidak jadi celah untuk melewati
-        // aturan min:8 yang sudah dipasang di guruStore().
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:guru_bk,username,' . $id,
             'password' => 'nullable|string|min:8',
@@ -60,7 +55,13 @@ class AkunController extends Controller
             unset($data['password']);
         }
         $data['is_active'] = $request->boolean('is_active');
+        $passwordChanged = !empty($data['password']);
         $row->update($data);
+
+        if ($passwordChanged || !$row->is_active) {
+            $row->tokens()->delete();
+        }
+
         return redirect()->route('admin.dashboard', ['tab' => 'guru'])
             ->with('success', 'Akun guru diperbarui.');
     }
@@ -69,6 +70,7 @@ class AkunController extends Controller
     {
         $row = GuruBk::findOrFail($id);
         $row->update(['is_active' => false]);
+        $row->tokens()->delete();
         return redirect()->route('admin.dashboard', ['tab' => 'guru'])
             ->with('success', 'Akun Guru BK dinonaktifkan.');
     }
@@ -93,8 +95,6 @@ class AkunController extends Controller
 
     public function kepsekStore(Request $request)
     {
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
-        // min:8 — disamakan dengan akun Guru BK.
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:kepsek,username',
             'password' => 'required|string|min:8',
@@ -114,8 +114,6 @@ class AkunController extends Controller
     public function kepsekUpdate(Request $request, int $id)
     {
         $row = Kepsek::findOrFail($id);
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 12): min:4 dinaikkan ke
-        // min:8 pada update juga — sama seperti guruUpdate().
         $data = $request->validate([
             'username' => 'required|string|max:50|unique:kepsek,username,' . $id,
             'password' => 'nullable|string|min:8',
@@ -127,7 +125,13 @@ class AkunController extends Controller
             unset($data['password']);
         }
         $data['is_active'] = $request->boolean('is_active');
+        $passwordChanged = !empty($data['password']);
         $row->update($data);
+
+        if ($passwordChanged || !$row->is_active) {
+            $row->tokens()->delete();
+        }
+
         return redirect()->route('admin.dashboard', ['tab' => 'kepsek'])
             ->with('success', 'Akun kepsek diperbarui.');
     }
@@ -136,6 +140,7 @@ class AkunController extends Controller
     {
         $row = Kepsek::findOrFail($id);
         $row->update(['is_active' => false]);
+        $row->tokens()->delete();
         return redirect()->route('admin.dashboard', ['tab' => 'kepsek'])
             ->with('success', 'Akun Kepala Sekolah dinonaktifkan.');
     }
