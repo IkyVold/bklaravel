@@ -126,6 +126,17 @@ class AuthController extends Controller
             // query DB tambahan di setiap request.
             'must_change_password' => (bool) $siswa->must_change_password,
         ]);
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 2): baseline
+        // password_version disimpan sama seperti loginStaff() di bawah —
+        // dibaca SETELAH verifyPassword() di atas selesai (termasuk
+        // kemungkinan upgrade hash lama md5->bcrypt yang ikut menaikkan
+        // versi ini), supaya baseline yang tersimpan selalu mencerminkan
+        // state password PALING BARU saat login ini terjadi. RoleAuth
+        // membandingkan ulang nilai ini ke database pada setiap request;
+        // kalau Admin mereset password siswa setelah session ini dibuat,
+        // versi di database naik dan tidak lagi cocok dengan baseline
+        // ini, sehingga session lama langsung dipaksa logout.
+        Session::put('auth_password_version', (int) $siswa->password_version);
         Session::regenerate();
 
         if ($siswa->must_change_password) {

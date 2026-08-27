@@ -27,6 +27,7 @@
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 16v-4M12 8h.01" />
             </svg>
+            
             Isi konsultasi Anda (deskripsi masalah, kesimpulan, dan rekomendasi) bersifat rahasia dan
             hanya dapat dilihat oleh Anda dan guru BK yang Anda pilih. Kepala Sekolah dapat melihat
             data administratif (jadwal dan status) untuk keperluan monitoring, tanpa isi konsultasi.

@@ -83,15 +83,21 @@ class AdminEndpointAuthorizationTest extends TestCase
             'password' => 'password123',
         ])->assertStatus(400);
 
-        $this->postJson('/api/siswa', [
+        $response = $this->postJson('/api/siswa', [
             'nis' => '1234',
             'nama' => 'Siswa Baru',
             'kelas' => 'X - 1',
         ])->assertCreated();
 
+        // PEMBARUAN (revisi 27 Agustus 2026, poin 1): password default
+        // sekarang acak (bukan lagi = NIS), dan dikembalikan di response
+        // supaya Guru BK tahu apa yang harus disampaikan ke siswa.
         $siswa = Siswa::where('nis', '1234')->first();
         $this->assertNotNull($siswa);
-        $this->assertTrue($siswa->verifyPassword('1234'));
+        $this->assertFalse($siswa->verifyPassword('1234'));
+        $generatedPassword = $response->json('data.password');
+        $this->assertNotNull($generatedPassword);
+        $this->assertTrue($siswa->verifyPassword($generatedPassword));
     }
 
     public function test_admin_token_can_create_siswa_with_custom_password(): void

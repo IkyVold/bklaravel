@@ -69,12 +69,9 @@ class ChatController extends Controller
         return response()->json(['success' => true, 'data' => $messages]);
     }
 
-    public function ai(Request $request, AiChatService $ai)
+    public function ai(Request $request, AiChatService $ai) //menerima data ketika siswa mengirim sswa tidk mengirim over
     {
-        // Rate limit sama seperti Api/ChatController::ai() — supaya siswa
-        // tidak bisa memakai jalur web untuk melewati batas API dan
-        // menghabiskan quota Groq.
-        $key = 'ai-chat:' . (Session::get('auth_id') ?? $request->ip());
+        $key = 'ai-chat:' . (Session::get('auth_id') ?? $request->ip()); //membatasi jumlah permintaan agar
         if (RateLimiter::tooManyAttempts($key, 20)) { // 20 req / menit
             $seconds = RateLimiter::availableIn($key);
             return response()->json([
@@ -93,14 +90,13 @@ class ChatController extends Controller
             $messages = [['role' => 'user', 'content' => $single]];
         }
 
-        // Paksa role user — cegah prompt injection
         $safe = [];
         foreach ($messages as $m) {
             if (!is_array($m)) continue;
             $c = trim((string) ($m['content'] ?? ''));
             if ($c === '') continue;
             if (mb_strlen($c) > 2000) $c = mb_substr($c, 0, 2000);
-            $safe[] = ['role' => 'user', 'content' => $c];
+            $safe[] = ['role' => 'user', 'content' => $c];             //membatasi jumlah riwayat agar penggunaan token terkendali
         }
         if (count($safe) > 20) $safe = array_slice($safe, -20);
         if ($safe === []) {
@@ -233,7 +229,7 @@ class ChatController extends Controller
         $jenis = $row->jenis ?? '';
         $sk = $row->status_konfirmasi ?? '';
         $status = $row->status ?? '';
-        $okJenis = in_array($jenis, ['Daring', 'Online'], true);
+        $okJenis = in_array($jenis, ['Daring', 'Online'], true); //yg menentukan chat hanya boleh konseling online
         $okKonf = in_array($sk, ['Terkonfirmasi', 'Dikonfirmasi', 'Tervalidasi'], true);
         if ($status === 'Dibatalkan') {
             abort(403, 'Konseling dibatalkan — chat tidak tersedia.');

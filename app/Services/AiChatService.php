@@ -114,7 +114,7 @@ class AiChatService
             if (!Schema::hasTable('informasi_bk')) {
                 return $fallback;
             }
-            $rows = InformasiBk::query()
+            $rows = InformasiBk::query() //
                 ->orderByDesc('updated_at')
                 ->get(['judul', 'kategori', 'isi']);
 
@@ -122,7 +122,7 @@ class AiChatService
                 return $fallback;
             }
 
-            return $rows->map(function ($r) {
+            return $rows->map(function ($r) { //
                 return "### {$r->judul} ({$r->kategori})\n{$r->isi}";
             })->implode("\n\n");
         } catch (\Throwable $e) {
@@ -132,6 +132,7 @@ class AiChatService
 
     protected function buildSystemPrompt(string $referensiText): string
     {
+        //system prompt digunakan untuk memberikan instruksi termasuk batasan informasi yang di berikan
         return <<<PROMPT
 Anda adalah konselor BK profesional untuk siswa SMP/SMA.
 

@@ -214,7 +214,7 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
                     <option value="Laki-laki">Laki-laki</option>
                     <option value="Perempuan">Perempuan</option>
                 </select>
-                <p style="font-size:12px;color:#888;margin:0 0 12px">Password default = NIS siswa</p>
+                <p style="font-size:12px;color:#888;margin:0 0 12px">Password awal dibuat otomatis secara acak dan akan ditampilkan setelah siswa berhasil disimpan — sampaikan ke siswa secara manual.</p>
                 <button type="submit" class="btn-simpan-modal">💾 Simpan Siswa</button>
             </form>
         </div>
@@ -232,7 +232,7 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
             <div class="guru-modal-hint">
                 💡 Kolom header: <strong>NIS</strong>, <strong>Nama</strong>, <strong>Kelas</strong>, <strong>Jenis Kelamin</strong> (opsional).
                 Format kelas harus persis seperti <strong>X - 1</strong>. NIS yang sudah ada akan <strong>diperbarui</strong>.
-                Password default siswa baru = NIS.
+                Password awal siswa baru dibuat otomatis secara acak dan akan ditampilkan di bawah setelah import selesai — catat sebelum menutup jendela ini.
             </div>
             <p style="margin:0 0 10px">
                 <a href="{{ route('guru.siswa.template') }}" style="color:#534AB7;font-weight:600;font-size:13px">⬇️ Download template CSV</a>
@@ -311,6 +311,71 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
   @endif
 
   // Import Excel
+  // PERBAIKAN (revisi 27 Agustus 2026, poin 1): password akun siswa baru
+  // hasil import sekarang dibuat ACAK oleh server (lihat SiswaController),
+  // bukan lagi = NIS yang sudah diketahui Guru BK dari file yang
+  // diupload. Karena itu, hasil import HARUS menampilkan daftar
+  // NIS/Nama/Password untuk tiap akun baru, dan halaman TIDAK BOLEH lagi
+  // auto-reload sesaat setelah sukses (dulu 1.2 detik) — itu tidak
+  // memberi waktu Guru BK membaca/menyalin password yang baru dibuat.
+  // Sekarang reload hanya terjadi kalau Guru BK sendiri yang menutup
+  // modal (data-close) atau menekan tombol "Muat ulang" di bawah hasil.
+  //
+  // Dibangun lewat createElement + textContent (bukan innerHTML), sama
+  // seperti pola yang sudah dipakai di preview absen (poin 5) — nis/nama
+  // baris ini berasal dari file yang diupload pengguna, jadi tetap
+  // diperlakukan sebagai teks biasa, bukan markup.
+  function renderImportResult(box, j) {
+    box.innerHTML = '';
+    box.style.display = 'block';
+    box.className = 'import-result ' + (j.success ? 'ok' : 'err');
+
+    var msg = document.createElement('p');
+    msg.style.margin = '0 0 8px';
+    msg.textContent = j.message || j.error || 'Selesai';
+    box.appendChild(msg);
+
+    var newAccounts = Array.isArray(j.new_accounts) ? j.new_accounts : [];
+    if (j.success && newAccounts.length) {
+      var warn = document.createElement('p');
+      warn.style.cssText = 'margin:0 0 6px;font-weight:600;color:#8a5a00';
+      warn.textContent = 'Password awal siswa baru (catat/salin sekarang, tidak ditampilkan lagi setelah ini):';
+      box.appendChild(warn);
+
+      var table = document.createElement('table');
+      table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px';
+      var thead = document.createElement('tr');
+      ['NIS', 'Nama', 'Password Awal'].forEach(function (h) {
+        var th = document.createElement('th');
+        th.style.cssText = 'text-align:left;padding:4px 6px;border-bottom:1px solid #ddd';
+        th.textContent = h;
+        thead.appendChild(th);
+      });
+      table.appendChild(thead);
+
+      newAccounts.forEach(function (acc) {
+        var tr = document.createElement('tr');
+        [acc.nis, acc.nama, acc.password].forEach(function (val) {
+          var td = document.createElement('td');
+          td.style.cssText = 'padding:4px 6px;border-bottom:1px solid #eee;font-family:monospace';
+          td.textContent = val;
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+      box.appendChild(table);
+    }
+
+    if (j.success) {
+      var reloadBtn = document.createElement('button');
+      reloadBtn.type = 'button';
+      reloadBtn.className = 'btn-simpan-modal';
+      reloadBtn.textContent = '✅ Selesai, muat ulang halaman';
+      reloadBtn.addEventListener('click', function () { location.reload(); });
+      box.appendChild(reloadBtn);
+    }
+  }
+
   document.getElementById('btnProsesExcel').addEventListener('click', function () {
     var file = document.getElementById('fileExcel').files[0];
     if (!file) { alert('Pilih file Excel terlebih dahulu!'); return; }
@@ -325,11 +390,7 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
       body: fd
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
-        var box = document.getElementById('resultExcel');
-        box.style.display = 'block';
-        box.className = 'import-result ' + (res.j.success ? 'ok' : 'err');
-        box.textContent = res.j.message || res.j.error || 'Selesai';
-        if (res.j.success) setTimeout(function () { location.reload(); }, 1200);
+        renderImportResult(document.getElementById('resultExcel'), res.j);
       })
       .catch(function () {
         var box = document.getElementById('resultExcel');
@@ -456,11 +517,7 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
       body: JSON.stringify({ rows: rows })
     }).then(function (r) { return r.json(); })
       .then(function (j) {
-        var box = document.getElementById('resultAbsen');
-        box.style.display = 'block';
-        box.className = 'import-result ' + (j.success ? 'ok' : 'err');
-        box.textContent = j.message || j.error || 'Selesai';
-        if (j.success) setTimeout(function () { location.reload(); }, 1200);
+        renderImportResult(document.getElementById('resultAbsen'), j);
       })
       .finally(function () { btn.disabled = false; });
   });

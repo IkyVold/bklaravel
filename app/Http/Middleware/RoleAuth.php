@@ -146,6 +146,33 @@ class RoleAuth
             $authUser['must_change_password'] = (bool) $siswa->must_change_password;
             Session::put('auth_user', $authUser);
 
+            // PERBAIKAN (revisi 27 Agustus 2026, poin 2): sama seperti
+            // perlakuan password_version untuk Guru BK/Kepsek/Admin di
+            // atas — sebelumnya TIDAK ADA perbandingan apa pun untuk
+            // siswa, jadi session Web siswa yang sudah dibajak tetap
+            // hidup penuh walau Admin sudah mereset passwordnya (hanya
+            // must_change_password yang ikut disinkronkan, itu pun bisa
+            // "dipatuhi" attacker dengan mengganti password lagi tanpa
+            // pernah kehilangan sesi). Sekarang password_version akun
+            // dibandingkan ke baseline yang disimpan session saat login
+            // (lihat Web\AuthController@loginSiswa dan
+            // Web\ProfileController@update, yang memperbarui baseline
+            // ini setiap kali siswa mengganti password sendiri). exists()
+            // dipakai supaya session lama yang dibuat SEBELUM fitur ini
+            // ada (belum pernah menyimpan kunci ini) tidak langsung
+            // dianggap basi.
+            if (Session::exists('auth_password_version')) {
+                $currentVersion = (int) $siswa->password_version;
+                $sessionVersion = (int) Session::get('auth_password_version');
+                if ($currentVersion !== $sessionVersion) {
+                    Session::flush();
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                    return redirect()->route('login')
+                        ->withErrors(['login' => 'Password akun ini baru saja diubah. Silakan login ulang.']);
+                }
+            }
+
             $exemptRoutes = ['siswa.profil', 'siswa.profil.update'];
             if ($siswa->must_change_password && !in_array($request->route()?->getName(), $exemptRoutes, true)) {
                 return redirect()->route('siswa.profil')

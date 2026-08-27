@@ -53,23 +53,35 @@ class SiswaPasswordMinimumLengthTest extends TestCase
         $this->assertTrue($siswa->verifyPassword('passwordCukup10'));
     }
 
-    public function test_create_siswa_tanpa_password_tetap_boleh_default_ke_nis(): void
+    /**
+     * PEMBARUAN (revisi 27 Agustus 2026, poin 1): dulu tes ini bernama
+     * ..._tetap_boleh_default_ke_nis dan memastikan password default =
+     * NIS. Itu justru perilaku yang sekarang DIPERBAIKI — NIS bukan
+     * rahasia, jadi password default tidak boleh lagi bisa ditebak dari
+     * NIS. Sekarang tes ini memastikan: (1) password TIDAK sama dengan
+     * NIS, (2) password acak tetap dikembalikan di response supaya
+     * Admin/Guru BK bisa menyampaikannya ke siswa, dan (3) tetap wajib
+     * diganti saat login pertama seperti sebelumnya.
+     */
+    public function test_create_siswa_tanpa_password_mendapat_password_acak_bukan_nis(): void
     {
-        // Password default (= NIS, 4 digit) SENGAJA tidak kena aturan
-        // minimal 10 karakter — itu bukan password custom, hanya nilai
-        // awal sementara yang wajib segera diganti siswa.
         $admin = Admin::factory()->create();
         Sanctum::actingAs($admin, ['admin']);
 
-        $this->postJson('/api/siswa', [
+        $response = $this->postJson('/api/siswa', [
             'nis' => '6666',
             'nama' => 'Siswa Password Default',
             'kelas' => 'X - 1',
         ])->assertCreated();
 
+        $generatedPassword = $response->json('data.password');
+        $this->assertNotNull($generatedPassword, 'Password acak wajib dikembalikan di response.');
+        $this->assertNotSame('6666', $generatedPassword);
+
         $siswa = Siswa::where('nis', '6666')->first();
         $this->assertNotNull($siswa);
-        $this->assertTrue($siswa->verifyPassword('6666'));
+        $this->assertFalse($siswa->verifyPassword('6666'));
+        $this->assertTrue($siswa->verifyPassword($generatedPassword));
         $this->assertTrue((bool) $siswa->must_change_password);
     }
 
@@ -95,9 +107,17 @@ class SiswaPasswordMinimumLengthTest extends TestCase
 
         $this->assertDatabaseMissing('siswa', ['nis' => '7002']);
 
-        // Baris tanpa password custom tetap boleh default ke NIS.
+        // PEMBARUAN (revisi 27 Agustus 2026, poin 1): baris tanpa password
+        // custom sekarang mendapat password ACAK, bukan lagi = NIS.
+        // Password itu wajib muncul di 'new_accounts' pada response
+        // supaya Admin/Guru BK tahu apa yang harus disampaikan ke siswa.
         $siswaDefault = Siswa::where('nis', '7003')->first();
         $this->assertNotNull($siswaDefault);
-        $this->assertTrue($siswaDefault->verifyPassword('7003'));
+        $this->assertFalse($siswaDefault->verifyPassword('7003'));
+
+        $newAccounts = collect($response->json('new_accounts'));
+        $generated = $newAccounts->firstWhere('nis', '7003');
+        $this->assertNotNull($generated, 'Password acak untuk NIS 7003 wajib ada di new_accounts.');
+        $this->assertTrue($siswaDefault->verifyPassword($generated['password']));
     }
 }

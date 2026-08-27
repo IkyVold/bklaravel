@@ -4,21 +4,50 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\RiwayatKelas;
+use App\Models\Siswa;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class RiwayatKelasController extends Controller
 {
+    /**
+     * PERBAIKAN (revisi 27 Agustus 2026, poin 3): riwayat_kelas tidak
+     * lagi punya kolom 'nis' sendiri (lihat migration
+     * add_siswa_id_to_riwayat_kelas dan Model\RiwayatKelas) — data
+     * dihubungkan lewat siswa_id. Kontrak endpoint publik ini SENGAJA
+     * dipertahankan memakai {nis} di URL (tidak mengubah API untuk
+     * klien yang sudah ada); method ini yang menerjemahkan NIS dari
+     * request jadi siswa_id di lapisan internal.
+     */
     public function list(string $nis): JsonResponse
     {
-        $rows = RiwayatKelas::where('nis', $nis)->orderByDesc('tahun_ajaran')->get();
+        $siswa = Siswa::where('nis', $nis)->first(['id', 'nis']);
+        if (!$siswa) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        // Eager-load relasi siswa (dan set manual ke siswa yang sudah
+        // ada di tangan) supaya accessor 'nis' pada tiap baris tidak
+        // memicu query tambahan per baris (N+1).
+        $rows = RiwayatKelas::where('siswa_id', $siswa->id)
+            ->orderByDesc('tahun_ajaran')
+            ->get()
+            ->each(fn ($row) => $row->setRelation('siswa', $siswa));
+
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
     public function getAktif(string $nis): JsonResponse
     {
-        $row = RiwayatKelas::where('nis', $nis)->where('status', 'aktif')->first();
+        $siswa = Siswa::where('nis', $nis)->first(['id', 'nis']);
+        if (!$siswa) {
+            return response()->json(['success' => true, 'data' => null]);
+        }
+
+        $row = RiwayatKelas::where('siswa_id', $siswa->id)->where('status', 'aktif')->first();
+        $row?->setRelation('siswa', $siswa);
+
         return response()->json(['success' => true, 'data' => $row]);
     }
 
@@ -36,7 +65,18 @@ class RiwayatKelasController extends Controller
         if ($v->fails()) {
             return response()->json(['success' => false, 'message' => $v->errors()->first()], 400);
         }
-        $row = RiwayatKelas::create($v->validated());
+
+        $data = $v->validated();
+        $siswa = Siswa::where('nis', $data['nis'])->first(['id', 'nis']);
+        if (!$siswa) {
+            return response()->json(['success' => false, 'message' => 'Siswa dengan NIS tersebut tidak ditemukan'], 404);
+        }
+        unset($data['nis']);
+        $data['siswa_id'] = $siswa->id;
+
+        $row = RiwayatKelas::create($data);
+        $row->setRelation('siswa', $siswa);
+
         return response()->json(['success' => true, 'data' => $row], 201);
     }
 

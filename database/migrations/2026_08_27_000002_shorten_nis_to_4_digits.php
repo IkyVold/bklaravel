@@ -21,50 +21,80 @@ use Illuminate\Support\Facades\Schema;
  * Kolom dipersempit dari varchar(10) menjadi varchar(4) supaya lapisan
  * database ikut menegakkan batas ini, bukan cuma mengandalkan validasi
  * di controller (yang bisa saja lupa ditambahkan di endpoint baru).
+ *
+ * PERBAIKAN (bug ditemukan saat migrate di database production yang
+ * sudah lama berjalan): versi sebelumnya di sini LANGSUNG memanggil
+ * dropUnique('siswa_nis_unique') dengan asumsi index itu SELALU ada
+ * dengan nama tsb, karena kolom 'nis' di create_bk_tables.php sekarang
+ * memang punya ->unique(). Tapi kalau migration create_bk_tables itu
+ * sudah tercatat "sudah pernah dijalankan" di tabel `migrations` sejak
+ * SEBELUM ->unique() ditambahkan ke file tsb (Laravel tidak menjalankan
+ * ulang migration yang sudah tercatat walau isi filenya berubah), kolom
+ * 'nis' bisa saja TIDAK punya unique index sama sekali di database yang
+ * bersangkutan — dropUnique() lalu gagal dengan error SQL "Can't DROP
+ * INDEX `siswa_nis_unique`; check that it exists". Pola bug yang persis
+ * sama dengan yang sudah diperbaiki di migration
+ * add_unique_pengajuan_sebelumnya_id, tetapi belum sempat diterapkan di
+ * sini.
+ *
+ * Sekarang index unique pada kolom 'nis' (nama apa pun) hanya di-drop
+ * KALAU benar-benar ditemukan lewat Schema::getIndexes(), dan index baru
+ * hanya dibuat kalau belum ada index unique bernama 'siswa_nis_unique' —
+ * konsisten dengan pola defensif yang sama di migration lain.
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        // PERBAIKAN: kolom 'nis' SUDAH ->unique() sejak migration awal
-        // (create_bk_tables.php), index-nya otomatis bernama
-        // 'siswa_nis_unique'. Memanggil ->unique()->change() lagi di sini
-        // (versi sebelumnya) membuat driver SQLite membangun ulang tabel
-        // sambil menyalin index lama itu SEKALIGUS mencoba membuat index
-        // unique baru dari deklarasi ->unique() pada call yang sama,
-        // sehingga bentrok: "index siswa_nis_unique already exists".
-        //
-        // Sekarang index lama sengaja di-drop dulu secara eksplisit,
-        // BARU kolom diubah panjangnya, baru index unique dibuat ulang
-        // dengan nama yang sama — masing-masing langkah di Schema::table()
-        // terpisah supaya urutannya pasti dan tidak bergantung pada
-        // perilaku implisit ->change() dalam menyalin index di berbagai
-        // driver database (SQLite/MySQL/Postgres).
-        Schema::table('siswa', function ($table) {
-            $table->dropUnique('siswa_nis_unique');
-        });
+        $this->dropExistingUniqueOnNis();
 
         Schema::table('siswa', function ($table) {
             $table->string('nis', 4)->change();
         });
 
-        Schema::table('siswa', function ($table) {
-            $table->unique('nis', 'siswa_nis_unique');
-        });
+        $uniqueSudahAda = collect(Schema::getIndexes('siswa'))
+            ->contains('name', 'siswa_nis_unique');
+
+        if (!$uniqueSudahAda) {
+            Schema::table('siswa', function ($table) {
+                $table->unique('nis', 'siswa_nis_unique');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('siswa', function ($table) {
-            $table->dropUnique('siswa_nis_unique');
-        });
+        $this->dropExistingUniqueOnNis();
 
         Schema::table('siswa', function ($table) {
             $table->string('nis', 10)->change();
         });
 
-        Schema::table('siswa', function ($table) {
-            $table->unique('nis', 'siswa_nis_unique');
-        });
+        $uniqueSudahAda = collect(Schema::getIndexes('siswa'))
+            ->contains('name', 'siswa_nis_unique');
+
+        if (!$uniqueSudahAda) {
+            Schema::table('siswa', function ($table) {
+                $table->unique('nis', 'siswa_nis_unique');
+            });
+        }
+    }
+
+    /**
+     * Hapus index unique mana pun yang menaungi kolom 'nis' sendirian
+     * (bukan bagian dari composite index), apa pun namanya di database
+     * ini. Dicek berdasarkan definisi index (kolom penyusun + flag
+     * unique), bukan hanya menebak satu nama tetap.
+     */
+    private function dropExistingUniqueOnNis(): void
+    {
+        $index = collect(Schema::getIndexes('siswa'))
+            ->first(fn ($idx) => $idx['unique'] && $idx['columns'] === ['nis']);
+
+        if ($index) {
+            Schema::table('siswa', function ($table) use ($index) {
+                $table->dropUnique($index['name']);
+            });
+        }
     }
 };

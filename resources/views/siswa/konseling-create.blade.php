@@ -47,7 +47,8 @@
             Isi deskripsi masalah dengan jelas dan detail agar Guru BK dapat memahami situasi Anda dengan lebih baik.
         </div>
 
-        <form method="POST" action="{{ route('siswa.konseling.store') }}" id="konselingForm">
+        <!-- mengirim -->
+        <form method="POST" action="{{ route('siswa.konseling.store') }}" id="konselingForm"> 
             @csrf
             <input type="hidden" name="guru_id" value="{{ $selectedGuruId ?? '' }}">
             <input type="hidden" name="guru_bk" value="{{ $guruNama }}">

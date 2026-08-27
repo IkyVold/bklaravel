@@ -115,6 +115,46 @@ class ProfileController extends Controller
 
         $data = $v->validated();
 
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 2 — lanjutan, hasil
+        // review dosen penguji): EnsurePasswordChanged mengecualikan
+        // ProfileController@update dari gate 423 supaya siswa yang
+        // must_change_password=true tetap punya jalan untuk mematuhi
+        // kewajiban itu (ganti password sendiri). Tapi sebelumnya
+        // endpoint ini sendiri tidak membedakan "permintaan ganti
+        // password" dari permintaan lain — selama must_change_password
+        // masih true, TOKEN APA PUN yang masih bisa memanggil endpoint
+        // ini (termasuk token attacker yang sudah membajak akun sebelum
+        // Admin mereset password) tetap bebas mengubah jenis_kelamin,
+        // tanggal_lahir, alamat, atau no_telepon TANPA pernah benar-
+        // benar mengganti password, membuat kewajiban ganti password
+        // jadi gate yang bisa dilewati begitu saja.
+        //
+        // Sekarang, selama siswa masih wajib ganti password (dibaca dari
+        // kolom di database, BUKAN snapshot), endpoint ini:
+        //   1. Menolak (423, pesan & shape sama dengan EnsurePasswordChanged
+        //      supaya konsisten bagi klien) kalau field 'password' tidak
+        //      ikut dikirim sama sekali — field lain saja tidak cukup.
+        //   2. Kalau 'password' dikirim, field-field LAIN yang ikut
+        //      terselip di request yang sama diabaikan sepenuhnya (tidak
+        //      disimpan diam-diam) — satu-satunya perubahan yang diproses
+        //      adalah penggantian password itu sendiri. Ini mencegah
+        //      "menumpangkan" perubahan data lain di balik kewajiban
+        //      ganti password.
+        // Admin TIDAK terpengaruh pembatasan ini — Admin mereset password
+        // siswa lain, bukan mengubah profilnya sendiri, jadi
+        // must_change_password di sini selalu merujuk ke akun siswa yang
+        // sedang login sendiri.
+        if ($this->isSiswa($request) && $siswa->must_change_password) {
+            if (empty($data['password'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda wajib mengganti password default terlebih dahulu. Gunakan PUT /api/profile/{nis} dengan field password untuk menggantinya.',
+                    'must_change_password' => true,
+                ], 423);
+            }
+            $data = array_intersect_key($data, array_flip(['password', 'current_password']));
+        }
+
         if ($this->isSiswa($request) && !empty($data['password'])) {
             if (!$siswa->verifyPassword($data['current_password'])) {
                 return response()->json(['success' => false, 'message' => 'Password saat ini tidak sesuai'], 400);
@@ -133,7 +173,30 @@ class ProfileController extends Controller
             // siswa login berikutnya.
             $data['must_change_password'] = !$this->isSiswa($request);
         }
+
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 2): dicatat SEBELUM
+        // fill()->save() supaya tidak terpengaruh oleh unset('password')
+        // di atas untuk kasus password kosong.
+        $passwordChanged = array_key_exists('password', $data);
+
         $siswa->fill($data)->save();
+
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 2): sebelumnya baris di
+        // atas ini adalah SATU-SATUNYA hal yang terjadi saat Admin
+        // mereset password siswa — token Sanctum yang sudah diterbitkan
+        // untuk siswa ini (termasuk milik attacker yang mungkin sudah
+        // membajak akun sebelum reset ini terjadi) tetap berlaku penuh
+        // sampai kedaluwarsa sendiri. Sekarang, persis pola yang sudah
+        // dipakai Api\AkunController@updateGuru/@updateKepsek untuk
+        // staff: begitu password BENAR-BENAR berubah lewat endpoint ini
+        // DAN yang mereset adalah Admin (bukan siswa mengganti password
+        // sendiri — siswa tidak perlu "mencabut token miliknya sendiri"
+        // yang sedang ia pakai untuk request ini), seluruh token lama
+        // siswa dicabut. Token baru akan diterbitkan lagi saat siswa
+        // login ulang.
+        if ($passwordChanged && $this->isAdmin($request)) {
+            $siswa->tokens()->delete();
+        }
 
         // PERBAIKAN BUG (ditemukan saat menjalankan test poin 10): baris
         // ini sebelumnya memanggil $siswa->fresh([...]) dengan daftar NAMA

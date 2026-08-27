@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\AuthorizesBk;
 use App\Http\Controllers\Controller;
 use App\Models\Siswa;
 use App\Support\MasterKelas;
+use App\Support\TempPassword;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -39,9 +40,11 @@ class SiswaController extends Controller
         // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' hanya
         // wajib/dipakai untuk Admin. Guru BK boleh membuat siswa baru
         // (rute ini sekarang 'ability:guru,admin'), tapi tidak boleh
-        // menentukan passwordnya sendiri — dipaksa = NIS, apa pun yang
-        // dikirim di body. Reset password siswa yang SUDAH ADA tetap
-        // hanya lewat Api/ProfileController (siswa sendiri atau Admin).
+        // menentukan passwordnya sendiri — apa pun yang dikirim di body
+        // ditolak validasi ('prohibited' di bawah) dan password akan
+        // dibuat otomatis secara acak oleh sistem (lihat poin 1). Reset
+        // password siswa yang SUDAH ADA tetap hanya lewat
+        // Api/ProfileController (siswa sendiri atau Admin).
         $isAdmin = $this->isAdmin($request);
 
         $rules = [
@@ -84,22 +87,42 @@ class SiswaController extends Controller
         }
 
         $data = $v->validated();
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 1): dulu fallback-nya
+        // $data['nis'] — password awal siswa jadi = NIS-nya sendiri, yang
+        // BUKAN rahasia (lihat TempPassword untuk penjelasan lengkap
+        // kenapa ini celah). Sekarang kalau tidak ada password custom
+        // dari Admin, password awal dibuat ACAK, tidak berhubungan
+        // dengan NIS sama sekali.
+        $generatedPassword = null;
         if (empty($data['password'])) {
-            $data['password'] = $data['nis'];
+            $generatedPassword = TempPassword::generate();
+            $data['password'] = $generatedPassword;
         }
         // PERBAIKAN (revisi 25 Agustus 2026, poin 11): password awal siswa
         // selalu ditentukan oleh orang lain (Guru BK/Admin), bukan siswa
-        // itu sendiri — baik itu default (= NIS) maupun password custom
-        // dari Admin. Tandai wajib ganti password supaya siswa dipaksa
-        // menentukan password sendiri saat login pertama kali.
+        // itu sendiri — baik itu acak maupun password custom dari Admin.
+        // Tandai wajib ganti password supaya siswa dipaksa menentukan
+        // password sendiri saat login pertama kali.
         $data['must_change_password'] = true;
 
         $siswa = Siswa::create($data);
 
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 1): password acak yang
+        // baru dibuat WAJIB dikembalikan di response supaya pemanggil
+        // (Guru BK/Admin) tahu apa yang harus disampaikan ke siswa —
+        // begitu response ini terkirim, tidak ada tempat lain yang
+        // menyimpan password ini dalam bentuk plain text (kolom di DB
+        // sudah di-hash). Kalau Admin mengirim password custom sendiri,
+        // tidak perlu dikembalikan karena Admin sudah tahu isinya.
+        $responseData = $siswa->only(['id', 'nis', 'nama', 'kelas']);
+        if ($generatedPassword !== null) {
+            $responseData['password'] = $generatedPassword;
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Siswa berhasil ditambahkan',
-            'data' => $siswa->only(['id', 'nis', 'nama', 'kelas']),
+            'data' => $responseData,
         ], 201);
     }
 
@@ -114,13 +137,19 @@ class SiswaController extends Controller
         // di atas — Guru BK boleh import siswa (rute ini sekarang
         // 'ability:guru,admin'), tapi field 'password' pada tiap baris
         // diabaikan sepenuhnya kalau pemanggil bukan Admin; password
-        // selalu = NIS. Hanya Admin yang boleh menyertakan password custom
-        // per baris import.
+        // dibuat otomatis secara acak (lihat poin 1). Hanya Admin yang
+        // boleh menyertakan password custom per baris import.
         $isAdmin = $this->isAdmin($request);
 
         $inserted = 0;
         $skipped = 0;
         $errors = [];
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 1): password default
+        // per baris sekarang acak (lihat di bawah), bukan lagi = NIS
+        // yang sudah diketahui pemanggil dari body request-nya sendiri.
+        // Daftar ini WAJIB dikembalikan supaya pemanggil (Guru BK/Admin)
+        // tahu password apa yang harus disampaikan ke tiap siswa baru.
+        $newAccounts = [];
 
         foreach ($rows as $i => $row) {
             $nis = trim((string) ($row['nis'] ?? ''));
@@ -133,10 +162,15 @@ class SiswaController extends Controller
             // 'min:4' sebelum diperbaiki). Admin bisa mengirim password
             // custom sepanjang 1 karakter lewat import massal dan langsung
             // tersimpan ke database. Sekarang password custom per baris
-            // dipisah dulu dari nilai default (NIS) supaya bisa diperiksa
+            // dipisah dulu dari nilai default (acak) supaya bisa diperiksa
             // panjangnya sebelum dipakai — lihat pengecekan di bawah.
             $customPassword = $isAdmin ? trim((string) ($row['password'] ?? '')) : '';
-            $password = $customPassword !== '' ? $customPassword : $nis;
+            // PERBAIKAN (revisi 27 Agustus 2026, poin 1): fallback dulu
+            // = $nis (lihat TempPassword untuk alasan lengkap kenapa itu
+            // celah). $isGenerated dipakai di bawah untuk menandai baris
+            // mana yang passwordnya perlu dikembalikan ke pemanggil.
+            $isGenerated = $customPassword === '';
+            $password = $isGenerated ? TempPassword::generate() : $customPassword;
 
             if (!$nis || !$nama || !$kelas) {
                 $skipped++;
@@ -169,12 +203,12 @@ class SiswaController extends Controller
 
             // PERBAIKAN (revisi 27 Agustus 2026, poin 10): password custom
             // dari Admin (kalau diisi) wajib minimal 10 karakter, sama
-            // seperti create(). Password default (= NIS, dipakai kalau
-            // kolom password di baris ini kosong) TIDAK terkena aturan
-            // ini — itu memang dirancang hanya sebagai nilai awal
-            // sementara yang wajib segera diganti siswa (must_change_
-            // password selalu true di bawah), bukan password custom yang
-            // sengaja dipilih Admin.
+            // seperti create(). Password default (acak, dipakai kalau
+            // kolom password di baris ini kosong — lihat poin 1) TIDAK
+            // terkena aturan ini — itu memang dirancang hanya sebagai
+            // nilai awal sementara yang wajib segera diganti siswa
+            // (must_change_password selalu true di bawah), bukan
+            // password custom yang sengaja dipilih Admin.
             if ($customPassword !== '' && strlen($customPassword) < 10) {
                 $skipped++;
                 $errors[] = "Baris " . ($i + 1) . ": password kustom harus minimal 10 karakter";
@@ -194,12 +228,15 @@ class SiswaController extends Controller
                     'password' => $password,
                     'jenis_kelamin' => $row['jenis_kelamin'] ?? null,
                     // PERBAIKAN (revisi 25 Agustus 2026, poin 11): sama
-                    // seperti create() di atas — password awal (default
-                    // NIS atau custom dari Admin) bukan pilihan siswa
-                    // sendiri, jadi wajib diganti saat login pertama.
+                    // seperti create() di atas — password awal (acak atau
+                    // custom dari Admin) bukan pilihan siswa sendiri, jadi
+                    // wajib diganti saat login pertama.
                     'must_change_password' => true,
                 ]);
                 $inserted++;
+                if ($isGenerated) {
+                    $newAccounts[] = ['nis' => $nis, 'nama' => $nama, 'password' => $password];
+                }
             } catch (\Throwable $e) {
                 $skipped++;
                 $errors[] = "Baris " . ($i + 1) . ": " . $e->getMessage();
@@ -212,6 +249,7 @@ class SiswaController extends Controller
             'inserted' => $inserted,
             'skipped' => $skipped,
             'errors' => $errors,
+            'new_accounts' => $newAccounts,
         ]);
     }
 }

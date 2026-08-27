@@ -14,7 +14,7 @@ class Siswa extends Authenticatable
     protected $table = 'siswa';
 
     protected $fillable = [
-        'nis', 'nama', 'kelas', 'password', 'jenis_kelamin',
+        'nis', 'nisn', 'nama', 'kelas', 'password', 'jenis_kelamin',
         'tanggal_lahir', 'alamat', 'no_telepon', 'foto_profile',
         'failed_login_attempts', 'locked_until', 'must_change_password',
     ];
@@ -26,6 +26,8 @@ class Siswa extends Authenticatable
         'locked_until' => 'datetime',
         'failed_login_attempts' => 'integer',
         'must_change_password' => 'boolean',
+        'password_changed_at' => 'datetime',
+        'password_version' => 'integer',
     ];
 
     public function getAuthIdentifierName(): string
@@ -48,9 +50,18 @@ class Siswa extends Authenticatable
         return Notifikasi::untukPenerima((string) $this->nis, 'siswa');
     }
 
+    /**
+     * PERBAIKAN (revisi 27 Agustus 2026, poin 3): relasi ini sebelumnya
+     * memakai 'nis' sebagai kolom penghubung di kedua sisi ('nis' pada
+     * riwayat_kelas, 'nis' pada siswa) — relasi lewat STRING, bukan
+     * lewat foreign key sesungguhnya. Sekarang riwayat_kelas punya
+     * siswa_id (lihat migration add_siswa_id_to_riwayat_kelas), jadi
+     * relasi ini dipindah ke foreign key yang sesungguhnya — riwayat
+     * kelas tetap terhubung ke siswa yang sama walau NIS-nya berubah.
+     */
     public function riwayatKelas(): HasMany
     {
-        return $this->hasMany(RiwayatKelas::class, 'nis', 'nis');
+        return $this->hasMany(RiwayatKelas::class, 'siswa_id', 'id');
     }
 
     /**
@@ -71,6 +82,18 @@ class Siswa extends Authenticatable
         return false;
     }
 
+    /**
+     * PERBAIKAN (revisi 27 Agustus 2026, poin 2): lihat penjelasan
+     * lengkap di migration add_password_version_to_siswa dan di
+     * GuruBk::setPasswordAttribute() (pola identik). password_version
+     * dinaikkan setiap kali baris ini benar-benar dijalankan dengan
+     * value baru — baik saat Admin mereset password siswa, siswa
+     * mengganti password sendiri, maupun saat upgrade hash lama
+     * md5->bcrypt di verifyPassword() (yang juga memanggil setter ini
+     * lewat $this->password = $plain). Dipakai RoleAuth untuk memutus
+     * session Web siswa yang sudah tidak sinkron dengan password
+     * terbaru di database.
+     */
     public function setPasswordAttribute($value): void
     {
         if ($value === null || $value === '') {
@@ -82,5 +105,7 @@ class Siswa extends Authenticatable
         } else {
             $this->attributes['password'] = $value;
         }
+        $this->attributes['password_changed_at'] = now();
+        $this->attributes['password_version'] = (int) ($this->attributes['password_version'] ?? 0) + 1;
     }
 }

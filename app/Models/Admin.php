@@ -41,6 +41,21 @@ class Admin extends Authenticatable
     /**
      * PERBAIKAN (revisi 26 Agustus 2026, poin 3): lihat penjelasan di
      * GuruBk::setPasswordAttribute() — pola dan alasannya identik.
+     *
+     * PERBAIKAN (revisi 27 Agustus 2026, poin 5 — hasil review dosen
+     * penguji): versi sebelumnya di sini HANYA menstempel
+     * password_changed_at, tanpa ikut menaikkan password_version —
+     * berbeda dari GuruBk dan Kepsek yang sudah benar menaikkan counter
+     * ini di setter masing-masing, padahal komentar di atas mengklaim
+     * "pola identik". Belum ada endpoint reset password Admin, jadi
+     * sejauh ini dampaknya belum langsung kelihatan; tetapi begitu
+     * password Admin diganti (mis. lewat Tinker, atau saat fitur reset
+     * Admin ditambahkan nanti), password_version yang tidak ikut naik
+     * akan membuat RoleAuth (lihat perbandingan password_version dengan
+     * baseline session pada middleware itu) TIDAK mendeteksi perubahan
+     * tsb, sehingga session Web Admin lama tidak otomatis diputus —
+     * padahal mekanisme ini sudah berfungsi benar untuk Guru BK dan
+     * Kepsek. Baris di bawah menyamakan setter Admin dengan keduanya.
      */
     public function setPasswordAttribute($value): void
     {
@@ -53,5 +68,6 @@ class Admin extends Authenticatable
             $this->attributes['password'] = $value;
         }
         $this->attributes['password_changed_at'] = now();
+        $this->attributes['password_version'] = (int) ($this->attributes['password_version'] ?? 0) + 1;
     }
 }

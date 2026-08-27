@@ -51,7 +51,7 @@
                     </div>
                     @unless($siswa)
                     <div class="form-group">
-                        <p style="color:#6b7280;font-size:0.9em">Password akun siswa otomatis = NIS saat pertama dibuat. Guru BK tidak dapat mengatur atau mengubah password siswa dari sini — reset password hanya dapat dilakukan oleh Admin atau siswa itu sendiri.</p>
+                        <p style="color:#6b7280;font-size:0.9em">Password akun siswa dibuat otomatis secara acak saat pertama dibuat (ditampilkan sekali setelah disimpan). Guru BK tidak dapat mengatur atau mengubah password siswa dari sini — reset password hanya dapat dilakukan oleh Admin atau siswa itu sendiri.</p>
                     </div>
                     @endunless
                     <button type="submit" class="btn-cetak btn-cetak-green">💾 Simpan</button>

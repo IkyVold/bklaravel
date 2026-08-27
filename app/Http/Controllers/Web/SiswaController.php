@@ -7,6 +7,7 @@ use App\Models\Konseling;
 use App\Models\Siswa;
 use App\Support\MasterKelas;
 use App\Support\SimpleXlsx;
+use App\Support\TempPassword;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -73,11 +74,12 @@ class SiswaController extends Controller
         // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' SENGAJA
         // dihapus dari rules. Dulu Guru BK bisa mengisi password custom
         // saat menambah siswa baru lewat form ini — sekarang password
-        // SELALU di-set = NIS saat pembuatan, sama seperti jalur
-        // import (upsertSiswa()). Guru BK tidak lagi bisa menentukan atau
-        // mengubah password siswa lewat rute mana pun di bawah role:guru;
-        // reset password siswa hanya lewat Admin atau siswa itu sendiri
-        // (lihat Api/ProfileController, poin 1).
+        // SELALU dibuat otomatis oleh sistem saat pembuatan (lihat poin
+        // 1 di bawah), sama seperti jalur import (upsertSiswa()). Guru
+        // BK tidak lagi bisa menentukan atau mengubah password siswa
+        // lewat rute mana pun di bawah role:guru; reset password siswa
+        // hanya lewat Admin atau siswa itu sendiri (lihat
+        // Api/ProfileController, poin 1).
         $data = $request->validate([
             // PERBAIKAN (revisi 26 Agustus 2026, poin 8): dulu
             // 'string|max:20' — tidak konsisten dengan API (max:10) dan
@@ -96,18 +98,27 @@ class SiswaController extends Controller
         if (!MasterKelas::isValid($data['kelas'])) {
             return back()->withInput()->withErrors(['kelas' => 'Kelas tidak valid']);
         }
-        $data['password'] = $data['nis'];
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 1): password awal siswa
+        // TIDAK BOLEH lagi = NIS (lihat TempPassword untuk alasan
+        // lengkap — NIS bukan rahasia). Password acak ini WAJIB
+        // ditampilkan ke Guru BK di bawah supaya bisa disampaikan ke
+        // siswa; begitu response ini terkirim, password plain text-nya
+        // tidak disimpan di mana pun lagi (kolom 'password' di database
+        // sudah di-hash lewat Siswa::setPasswordAttribute()).
+        $tempPassword = TempPassword::generate();
+        $data['password'] = $tempPassword;
         // PERBAIKAN (revisi 25 Agustus 2026, poin 11): password awal siswa
-        // di jalur ini selalu = NIS dan ditentukan Guru BK, bukan siswa
-        // sendiri — wajib diganti saat login pertama.
+        // di jalur ini ditentukan sistem, bukan siswa sendiri — wajib
+        // diganti saat login pertama.
         $data['must_change_password'] = true;
         $data['jenis_kelamin'] = $this->normalizeJk($data['jenis_kelamin'] ?? null);
         Siswa::create($data);
 
+        $message = "Siswa ditambahkan. Password awal: {$tempPassword} — sampaikan ke siswa, wajib diganti saat login pertama.";
         if ($request->expectsJson() || $request->ajax()) {
-            return response()->json(['success' => true, 'message' => 'Siswa ditambahkan. Password default = NIS.']);
+            return response()->json(['success' => true, 'message' => $message, 'password' => $tempPassword]);
         }
-        return redirect()->route('guru.siswa.index')->with('success', 'Siswa ditambahkan. Password default = NIS.');
+        return redirect()->route('guru.siswa.index')->with('success', $message);
     }
 
     public function edit(int $id)
@@ -195,6 +206,13 @@ class SiswaController extends Controller
         $inserted = 0;
         $updated = 0;
         $skipped = [];
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 1): password siswa
+        // baru sekarang acak (lihat upsertSiswa()/TempPassword), bukan
+        // lagi = NIS yang sudah diketahui Guru BK dari file yang
+        // diupload. Daftar ini WAJIB dikirim balik ke frontend supaya
+        // Guru BK bisa menyalin/mencatat password tiap siswa baru —
+        // lihat resultExcel di siswa-index.blade.php.
+        $newAccounts = [];
         for ($r = 1; $r < count($rows); $r++) {
             $line = $rows[$r];
             $nis = trim((string) ($line[$map['nis']] ?? ''));
@@ -222,7 +240,12 @@ class SiswaController extends Controller
             }
             try {
                 $res = $this->upsertSiswa($nis, $nama, $kelas, $jk);
-                $res === 'updated' ? $updated++ : $inserted++;
+                if ($res['status'] === 'updated') {
+                    $updated++;
+                } else {
+                    $inserted++;
+                    $newAccounts[] = ['nis' => $nis, 'nama' => $nama, 'password' => $res['password']];
+                }
             } catch (\Throwable $e) {
                 $skipped[] = ['row' => $r + 1, 'reason' => $e->getMessage()];
             }
@@ -233,6 +256,7 @@ class SiswaController extends Controller
             'inserted' => $inserted,
             'updated' => $updated,
             'skipped' => $skipped,
+            'new_accounts' => $newAccounts,
         ]);
     }
 
@@ -311,6 +335,11 @@ class SiswaController extends Controller
         $inserted = 0;
         $updated = 0;
         $skipped = [];
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 1): lihat catatan yang
+        // sama di importExcel() — password siswa baru sekarang acak,
+        // jadi daftarnya wajib dikirim balik supaya bisa ditampilkan
+        // (dipakai oleh alur "Import dari Absen" di siswa-index.blade.php).
+        $newAccounts = [];
         foreach ($rows as $i => $r) {
             $nis = trim((string) ($r['nis'] ?? ''));
             $nama = trim((string) ($r['nama'] ?? ''));
@@ -333,7 +362,12 @@ class SiswaController extends Controller
             }
             try {
                 $res = $this->upsertSiswa($nis, $nama, $kelas, $jk);
-                $res === 'updated' ? $updated++ : $inserted++;
+                if ($res['status'] === 'updated') {
+                    $updated++;
+                } else {
+                    $inserted++;
+                    $newAccounts[] = ['nis' => $nis, 'nama' => $nama, 'password' => $res['password']];
+                }
             } catch (\Throwable $e) {
                 $skipped[] = ['row' => $i + 1, 'reason' => $e->getMessage()];
             }
@@ -344,6 +378,7 @@ class SiswaController extends Controller
             'inserted' => $inserted,
             'updated' => $updated,
             'skipped' => $skipped,
+            'new_accounts' => $newAccounts,
         ]);
     }
 
@@ -409,7 +444,20 @@ class SiswaController extends Controller
         throw new \RuntimeException('Format file harus .csv atau .xlsx');
     }
 
-    private function upsertSiswa(string $nis, string $nama, string $kelas, $jk): string
+    /**
+     * PERBAIKAN (revisi 27 Agustus 2026, poin 1): dulu mengembalikan
+     * string status ('inserted'/'updated') saja, karena password siswa
+     * baru selalu = NIS sehingga tidak perlu dikembalikan ke pemanggil
+     * (Guru BK sudah tahu NIS-nya). Sekarang password dibuat acak (lihat
+     * TempPassword), jadi pemanggil (importExcel()/importRows()) WAJIB
+     * tahu password yang baru dibuat supaya bisa ditampilkan — makanya
+     * return value diubah jadi array ['status' => ..., 'password' =>
+     * ...]. Untuk baris yang hanya di-update (siswa sudah ada), password
+     * TIDAK disentuh sama sekali dan 'password' bernilai null.
+     *
+     * @return array{status: 'inserted'|'updated', password: ?string}
+     */
+    private function upsertSiswa(string $nis, string $nama, string $kelas, $jk): array
     {
         $jk = $this->normalizeJk($jk);
         $existing = Siswa::where('nis', $nis)->first();
@@ -419,20 +467,21 @@ class SiswaController extends Controller
                 'kelas' => $kelas,
                 'jenis_kelamin' => $jk ?? $existing->jenis_kelamin,
             ]);
-            return 'updated';
+            return ['status' => 'updated', 'password' => null];
         }
+        $tempPassword = TempPassword::generate();
         Siswa::create([
             'nis' => $nis,
             'nama' => $nama,
             'kelas' => $kelas,
             'jenis_kelamin' => $jk,
-            'password' => $nis,
+            'password' => $tempPassword,
             // PERBAIKAN (revisi 25 Agustus 2026, poin 11): sama seperti
-            // store() di atas — password default = NIS wajib diganti saat
-            // login pertama.
+            // store() di atas — password awal wajib diganti saat login
+            // pertama.
             'must_change_password' => true,
         ]);
-        return 'inserted';
+        return ['status' => 'inserted', 'password' => $tempPassword];
     }
 
     private function normalizeJk($val): ?string

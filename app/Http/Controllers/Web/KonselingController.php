@@ -80,10 +80,10 @@ class KonselingController extends Controller
             'guruList', 'selectedGuru', 'selectedGuruId', 'slotsRutin'
         ));
     }
-
-    public function storeSiswa(Request $request)
+    //menerima dta yg dikirim dri form siswa
+    public function storeSiswa(Request $request) //menerima data
     {
-        $data = $request->validate([
+        $data = $request->validate([ // melakukan validasi terhadap data yang di kirim
             'guru_id' => 'nullable|integer',
             'guru_bk' => 'required|string|max:100',
             'tipe_jadwal' => 'required|string|in:Rutin,Nonrutin',
@@ -92,14 +92,7 @@ class KonselingController extends Controller
             'kategori' => ['required', 'string', Rule::in(KategoriKonseling::ALL)],
             'deskripsi' => 'required|string|min:20',
             'tanggal' => 'required|date|after_or_equal:today',
-            // PERBAIKAN (revisi 27 Agustus 2026, poin 7): dulu
-            // 'string|max:10' — lihat catatan lengkap di
-            // Api\KonselingController@store. date_format:H:i memastikan
-            // hanya jam 24-jam yang valid yang lolos ke ScheduleService.
             'jam' => 'required|date_format:H:i',
-            // PERBAIKAN (revisi 24 Agustus 2026, poin 11): opsional — kalau
-            // tidak diisi, ScheduleService memakai DEFAULT_DURATION_MINUTES
-            // (60 menit) saat cek overlap.
             'durasi_menit' => 'nullable|integer|min:5|max:480',
         ], [
             'deskripsi.min' => 'Deskripsi minimal 20 karakter agar Guru BK dapat memahami masalah Anda.',
@@ -111,7 +104,7 @@ class KonselingController extends Controller
         // Resolve guru stabil lewat ID (prioritas) lalu nama — match Node backend
         $guru = null;
         if (!empty($data['guru_id'])) {
-            $guru = GuruBk::find((int) $data['guru_id']);
+            $guru = GuruBk::find((int) $data['guru_id']);//mencari guru bk
         }
         if (!$guru) {
             $guru = GuruBk::where('nama', $data['guru_bk'])->first();
@@ -120,14 +113,6 @@ class KonselingController extends Controller
             return back()->withInput()->withErrors(['guru_bk' => 'Guru BK tidak ditemukan. Pilih ulang dari daftar.']);
         }
 
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 7): dulu di sini hanya
-        // dipastikan $guru ada, tidak pernah diperiksa is_active. UI memang
-        // hanya menampilkan Guru BK aktif, tapi itu cuma filter tampilan —
-        // seseorang bisa memanipulasi request (mis. lewat DevTools/curl)
-        // dan mengirim guru_id/guru_bk milik Guru BK yang sudah
-        // dinonaktifkan, dan backend tetap menerimanya. Validasi ini sudah
-        // ada di jalur API (Api/KonselingController::store()); sekarang
-        // jalur Web memakai aturan yang sama — jangan mengandalkan filter UI.
         if (!($guru->is_active ?? true)) {
             return back()->withInput()->withErrors(['guru_bk' => 'Guru BK tidak aktif. Pilih Guru BK lain dari daftar.']);
         }
@@ -149,9 +134,9 @@ class KonselingController extends Controller
             }
             $slotId = (int) ($data['jadwal_rutin_id'] ?? 0);
             $slot = JadwalRutin::where('id', $slotId)
-                ->where('guru_id', $guru->id)
-                ->where('is_active', true)
-                ->first();
+                ->where('guru_id', $guru->id) //memastikan jadawl punya gru bk
+                ->where('is_active', true) // mmstikan jdwl msh aktif
+                ->first(); //mngmbil satu data pertma yg sesuai
             if (!$slot) {
                 return back()->withInput()->withErrors([
                     'jadwal_rutin_id' => 'Pilih slot jadwal rutin yang tersedia dari Guru BK ini.',
@@ -168,23 +153,11 @@ class KonselingController extends Controller
                 ]);
             }
         }
-
-        // Cek konflik jadwal — satu aturan bersama dengan API (ScheduleService).
-        // Guru BK maupun siswa tidak boleh mempunyai dua sesi aktif yang
-        // interval waktunya overlap (bukan lagi hanya jam mulai persis sama
-        // — revisi 24 Agustus 2026, poin 11).
-        //
-        // PERBAIKAN (revisi 26 Agustus 2026, poin 8): cek konflik dan
-        // Konseling::create() sekarang dibungkus ScheduleService::runLocked()
-        // supaya dua pengajuan yang datang hampir bersamaan untuk guru/siswa
-        // yang sama tidak lagi bisa sama-sama lolos melihat slot kosong.
         $row = $this->schedule->runLocked($guru->id, $siswa->id, function () use ($siswa, $guru, $tanggal, $jam, $jenis, $tipe, $jadwalRutinId, $data) {
             if ($this->schedule->hasConflict($siswa->id, $guru->id, $guru->nama, $tanggal, $jam, $data['durasi_menit'] ?? null)) {
                 return null;
             }
 
-            // Status awal disamakan dengan API: pengajuan baru selalu Menunggu
-            // konfirmasi Guru BK, baru berubah menjadi Proses setelah dikonfirmasi.
             $payload = [
                 'siswa_id' => $siswa->id,
                 'guru_bk' => $guru->nama,
@@ -211,7 +184,7 @@ class KonselingController extends Controller
                 unset($payload['tipe_jadwal'], $payload['jadwal_rutin_id']);
             }
 
-            return Konseling::create($payload);
+            return Konseling::create($payload); //membuat record baru yg disiapkan payload
         });
 
         if (!$row) {
@@ -417,31 +390,12 @@ class KonselingController extends Controller
     public function konfirmasi(Request $request, int $id)
     {
         $row = $this->findGuruKonseling($id);
-
-        // Hanya pengajuan yang masih Menunggu yang boleh dikonfirmasi —
-        // mencegah record Dibatalkan/Selesai diproses ulang lewat form ini.
         if (($row->status ?? '') !== 'Menunggu') {
             return back()->with('error', 'Hanya pengajuan berstatus Menunggu yang dapat dikonfirmasi.');
         }
 
-        // PERBAIKAN (revisi 25 Agustus 2026, poin 9): dulu status_konfirmasi
-        // di sini cuma divalidasi 'nullable|string|max:30' — nilai bebas apa
-        // pun bisa dikirim client. Server kemudian hanya menangani secara
-        // khusus 'Dikonfirmasi'/'Tervalidasi' (dinormalisasi jadi
-        // 'Terkonfirmasi') dan selain itu dipakai APA ADANYA sebagai
-        // status_konfirmasi, sementara $row->status tetap dipaksa 'Proses'
-        // tanpa syarat. Kalau field dimanipulasi jadi nilai lain (mis.
-        // "Ditolak"), state ganjil status=Proses & status_konfirmasi=Ditolak
-        // bisa terbentuk — backend tidak boleh bergantung pada UI yang tidak
-        // pernah mengirim nilai itu. Form konfirmasi web ini HANYA untuk aksi
-        // konfirmasi, jadi nilainya dikunci ke satu-satunya pilihan yang sah:
-        // 'Terkonfirmasi'. Penolakan/pembatalan pakai proses tersendiri
-        // (lihat batalGuru()), bukan lewat form ini.
         $data = $request->validate([
             'tanggal_konfirmasi' => 'required|date',
-            // PERBAIKAN (revisi 27 Agustus 2026, poin 7): sama seperti
-            // 'jam' — nilai ini dipakai hasConflictFor()/strtotime() dan
-            // disimpan ulang ke kolom TIME $row->jam.
             'jam_konfirmasi' => 'required|date_format:H:i',
             'status_konfirmasi' => ['nullable', Rule::in(['Terkonfirmasi'])],
         ], [
@@ -451,20 +405,8 @@ class KonselingController extends Controller
             'status_konfirmasi.in' => 'Nilai status konfirmasi tidak valid.',
         ]);
 
-        // Field ini sekarang hanya bisa null (default) atau 'Terkonfirmasi'
-        // (lolos Rule::in di atas) — normalisasi Dikonfirmasi/Tervalidasi
-        // yang lama tidak diperlukan lagi karena nilai lain sudah ditolak
-        // Validator sebelum sampai ke sini.
         $konfirmasi = 'Terkonfirmasi';
 
-        // Cek konflik jadwal — sama seperti API, memakai tanggal/jam
-        // baru yang dipilih Guru BK saat konfirmasi. Dulu dibungkus
-        // "if ($konfirmasi === 'Terkonfirmasi')" karena $konfirmasi bisa
-        // bernilai lain; sekarang $konfirmasi SELALU 'Terkonfirmasi' (lihat
-        // di atas), jadi pengecekan bentrok berlaku tanpa syarat.
-        //
-        // PERBAIKAN (revisi 26 Agustus 2026, poin 8): cek konflik +
-        // penyimpanan dibungkus runLocked() — lihat catatan di storeSiswa().
         $ok = $this->schedule->runLocked($row->guru_id, $row->siswa_id, function () use ($row, $data, $konfirmasi) {
             if ($this->schedule->hasConflictFor($row, $data['tanggal_konfirmasi'], $data['jam_konfirmasi'])) {
                 return false;
@@ -488,8 +430,6 @@ class KonselingController extends Controller
         }
 
         if ($row->siswa) {
-            // Skema tunggal (penerima_id/penerima_role/dibaca/data), sama
-            // dengan Api\KonselingController — bukan lagi siswa_id/is_read.
             try {
                 Notifikasi::buatUntuk(
                     (string) $row->siswa->nis,
@@ -514,18 +454,10 @@ class KonselingController extends Controller
         $data = $request->validate([
             'laporan_kesimpulan' => 'required|string|min:5',
             'laporan_rekomendasi' => 'required|string|min:5',
-            // PERBAIKAN (revisi 26 Agustus 2026, poin 6): dulu
-            // 'string|max:80' — menerima string bebas apa pun. Sekarang
-            // wajib salah satu dari StatusPenanganan::ALL, sama persis
-            // dengan pilihan yang tersedia di dropdown form laporan.
             'laporan_status_penanganan' => ['required', 'string', Rule::in(StatusPenanganan::ALL)],
             'laporan_catatan_tambahan' => 'nullable|string',
-            // Sesi lanjutan (jika Monitoring)
             'buat_lanjutan' => 'nullable|boolean',
             'lanjutan_tanggal' => 'nullable|date|after_or_equal:today',
-            // PERBAIKAN (revisi 27 Agustus 2026, poin 7): dulu
-            // 'string|max:10' — lihat catatan lengkap di
-            // Api\KonselingController@store.
             'lanjutan_jam' => 'nullable|date_format:H:i',
             'lanjutan_jenis' => 'nullable|string|in:Luring,Daring',
         ], [
@@ -535,12 +467,6 @@ class KonselingController extends Controller
         ]);
 
         $user = Session::get('auth_user', []);
-
-        // PERBAIKAN (revisi 24 Agustus 2026, poin 5): semua business rule
-        // (window edit 72 jam, wajib konfirmasi, wajib sesi lanjutan untuk
-        // Monitoring, transaksi) sekarang tunggal di KonselingReportService
-        // — dipakai juga oleh Api/KonselingController@laporan agar kedua
-        // jalur tidak bisa lagi berbeda perilaku.
         try {
             $msg = $this->reports->simpan($row, $data, $user['nama'] ?? 'Guru BK');
         } catch (\RuntimeException $e) {
@@ -556,16 +482,11 @@ class KonselingController extends Controller
         return redirect()->route('guru.konseling.index', ['open' => 'walkin']);
     }
 
-    public function walkinStore(Request $request)
+    public function walkinStore(Request $request) //menerima data
     {
-        $data = $request->validate([
-            // PERBAIKAN (revisi 26 Agustus 2026, poin 8): diseragamkan
-            // dengan aturan NIS di seluruh sistem (tepat 4 digit angka).
+        $data = $request->validate([ //memvalidasi trhdp data yg di kirim
             'nis' => 'required|digits:4',
             'tanggal' => 'required|date',
-            // PERBAIKAN (revisi 27 Agustus 2026, poin 7): dulu
-            // 'string|max:10' — lihat catatan lengkap di
-            // Api\KonselingController@store.
             'jam' => 'required|date_format:H:i',
             'jenis' => 'required|string|max:30',
             'kategori' => ['required', 'string', Rule::in(KategoriKonseling::ALL)],
@@ -575,7 +496,7 @@ class KonselingController extends Controller
             'durasi_menit' => 'nullable|integer|min:5|max:480',
         ]);
 
-        $siswa = Siswa::where('nis', $data['nis'])->first();
+        $siswa = Siswa::where('nis', $data['nis'])->first(); //utk mndptkan identitas siswa yg dimasukan guru
         if (!$siswa) {
             return back()->withInput()->withErrors(['nis' => 'Siswa dengan NIS tersebut belum terdaftar.']);
         }
@@ -589,14 +510,6 @@ class KonselingController extends Controller
         if ($jenis === 'Tatap Muka' || $jenis === 'Walk-in') {
             $jenis = 'Luring';
         }
-
-        // Walk-in langsung terkonfirmasi (guru & siswa bertemu langsung),
-        // tapi tetap harus dicek supaya tidak bentrok dengan sesi lain yang
-        // sudah lebih dulu terjadwal pada slot yang sama.
-        //
-        // PERBAIKAN (revisi 26 Agustus 2026, poin 8): cek konflik dan
-        // Konseling::create() dibungkus runLocked() — lihat catatan di
-        // storeSiswa().
         $row = $this->schedule->runLocked($guruId ? (int) $guruId : null, $siswa->id, function () use ($siswa, $guruId, $namaGuru, $jenis, $data) {
             if ($this->schedule->hasConflict($siswa->id, $guruId, $namaGuru, $data['tanggal'], $data['jam'], $data['durasi_menit'] ?? null)) {
                 return null;
@@ -612,7 +525,7 @@ class KonselingController extends Controller
                 'jam' => $data['jam'],
                 'kelas_siswa' => $siswa->kelas,
                 'status' => 'Proses',
-                'status_konfirmasi' => 'Terkonfirmasi',
+                'status_konfirmasi' => 'Terkonfirmasi', //terkonfirmasi krna konseling scra lngsung sehingga tidak prlu memerlukan proses pengajuan dan konfrimasi
                 'tanggal_konfirmasi' => $data['tanggal'],
                 'jam_konfirmasi' => $data['jam'],
                 'tipe_jadwal' => 'Nonrutin',

@@ -21,6 +21,36 @@ class ProfileController extends Controller
     {
         $siswa = Siswa::findOrFail(Session::get('auth_id'));
 
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 2 — lanjutan, hasil
+        // review dosen penguji): rute 'siswa.profil.update' sengaja
+        // dikecualikan dari redirect wajib-ganti-password di RoleAuth
+        // (lihat $exemptRoutes di sana) supaya siswa punya jalan untuk
+        // benar-benar mematuhi kewajiban itu. Tapi method update() ini
+        // sendiri sebelumnya tidak membedakan "permintaan ganti password"
+        // dari permintaan lain — selama must_change_password masih true,
+        // session APA PUN yang masih bisa mencapai endpoint ini
+        // (termasuk session yang sudah dibajak sebelum Admin mereset
+        // password) tetap bebas mengubah jenis_kelamin/tanggal_lahir/
+        // alamat/no_telepon/foto lewat jalur mana pun di bawah (edit_field
+        // field lain, upload foto, atau fallback form penuh), tanpa pernah
+        // benar-benar mengganti password — sama seperti celah yang sudah
+        // diperbaiki di Api\ProfileController@update.
+        //
+        // Sekarang, selama siswa masih wajib ganti password (dibaca dari
+        // kolom di database, BUKAN snapshot session), request HANYA boleh
+        // lanjut kalau ini benar-benar sebuah "percobaan ganti password":
+        // baik lewat modal edit_field === 'password', maupun lewat
+        // fallback form penuh yang mengisi field 'password'. Semua jalur
+        // lain (edit_field field lain, upload foto saja, fallback form
+        // tanpa password) ditolak di sini SEBELUM sempat menyentuh
+        // Storage atau Siswa::update() sama sekali.
+        $isPercobaanGantiPassword = $request->input('edit_field') === 'password'
+            || (!$request->filled('edit_field') && $request->filled('password'));
+
+        if ($siswa->must_change_password && !$isPercobaanGantiPassword) {
+            return back()->with('error', 'Anda wajib mengganti password default terlebih dahulu sebelum mengubah data lain.');
+        }
+
         // Update satu field (match React modal edit)
         if ($request->filled('edit_field')) {
             $field = $request->input('edit_field');
@@ -68,6 +98,15 @@ class ProfileController extends Controller
                 Session::put('auth_user', array_merge(Session::get('auth_user', []), [
                     'must_change_password' => false,
                 ]));
+                // PERBAIKAN (revisi 27 Agustus 2026, poin 2): password_version
+                // baru saja naik lewat update() di atas (lihat
+                // Siswa::setPasswordAttribute()). Tanpa baris ini, RoleAuth
+                // akan melihat baseline session ini sudah basi pada
+                // request BERIKUTNYA dan langsung memaksa siswa yang baru
+                // saja mengganti password-nya sendiri untuk logout —
+                // padahal ini bukan reset oleh Admin, session ini tetap
+                // sah dipakai pemiliknya sendiri.
+                Session::put('auth_password_version', (int) $siswa->password_version);
                 return back()->with('success', 'Password berhasil diganti!');
             }
 
@@ -117,13 +156,25 @@ class ProfileController extends Controller
         }
         unset($data['current_password']);
 
-        if ($request->hasFile('foto')) {
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 2 — lanjutan): kalau
+        // fallback form ini dipakai selagi masih must_change_password
+        // (lolos guard umum di atas karena field 'password' ikut diisi),
+        // upload foto dilewati sama sekali — tidak disimpan ke disk sama
+        // sekali, bukan cuma dibuang dari $data — dan field lain yang
+        // ikut terselip di request yang sama (mis. jenis_kelamin, alamat)
+        // juga diabaikan. Satu-satunya perubahan yang benar-benar
+        // diproses tetap penggantian password itu sendiri, sama seperti
+        // pembatasan yang sudah dipasang di Api\ProfileController@update.
+        if ($siswa->must_change_password) {
+            $data = array_intersect_key($data, ['password' => true]);
+        } elseif ($request->hasFile('foto')) {
             if ($siswa->foto_profile) {
                 Storage::disk('public')->delete($siswa->foto_profile);
             }
             $data['foto_profile'] = $request->file('foto')->store('siswa', 'public');
         }
         unset($data['foto']);
+
         if (empty($data['password'])) {
             unset($data['password']);
         } else {
@@ -141,6 +192,16 @@ class ProfileController extends Controller
             Session::put('auth_user', array_merge(Session::get('auth_user', []), [
                 'must_change_password' => false,
             ]));
+        }
+
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 2): sama seperti pada
+        // jalur edit_field 'password' di atas — kalau field password
+        // ikut terisi di sini, password_version baru saja naik lewat
+        // update() di atas, jadi baseline session harus disinkronkan
+        // supaya RoleAuth tidak memaksa siswa logout dari sesi yang baru
+        // saja ia pakai untuk mengganti password-nya sendiri.
+        if (array_key_exists('password', $data)) {
+            Session::put('auth_password_version', (int) $siswa->password_version);
         }
 
         Session::put('auth_user', array_merge(Session::get('auth_user', []), [
