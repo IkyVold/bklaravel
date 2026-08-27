@@ -8,6 +8,19 @@ use App\Support\StatusPenanganan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Satu-satunya sumber aturan bisnis untuk menyimpan laporan konseling —
+ * dipakai oleh Web/KonselingController@laporan dan Api/KonselingController@laporan.
+ *
+ * PERBAIKAN (revisi 24 Agustus 2026, poin 5): sebelumnya jalur API punya
+ * logika laporan sendiri yang terpisah dari jalur Web — validasi
+ * kesimpulan/rekomendasi bersifat nullable dan sama sekali tidak memeriksa
+ * aturan "status penanganan Monitoring wajib sesi lanjutan". Akibatnya
+ * konseling dengan kategori Monitoring bisa langsung ditandai Selesai lewat
+ * API tanpa follow-up apa pun, padahal jalur Web sudah mewajibkannya.
+ * Sekarang kedua controller hanya memanggil simpan() di sini — jangan
+ * duplikasi logika laporan/Monitoring di controller manapun.
+ */
 class KonselingReportService
 {
     public function __construct(private ScheduleService $schedule)
@@ -33,61 +46,135 @@ class KonselingReportService
      */
     public function simpan(Konseling $row, array $data, string $namaPembuatLaporan): string
     {
-        $hasLaporan = !empty($row->laporan_created_at) || !empty($row->laporan_kesimpulan);
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 6): seluruh alur simpan()
+        // sekarang dibungkus SATU transaksi yang dimulai dengan MENGUNCI
+        // baris parent ($row) lebih dulu lewat lockForUpdate(), SEBELUM
+        // $hasChildLanjutan dihitung. Sebelumnya urutannya adalah:
+        //   1. Hitung $hasChildLanjutan (query biasa, tanpa lock)
+        //   2. ...validasi...
+        //   3. DB::transaction() BARU dimulai di sini untuk simpan+buat child
+        // Antara langkah 1 dan 3 ada celah waktu tanpa lock sama sekali.
+        // Kalau dua request laporan untuk PARENT YANG SAMA datang hampir
+        // bersamaan, keduanya bisa lolos langkah 1 dengan hasil
+        // "belum ada child", lalu keduanya lolos ke langkah 3 dan
+        // masing-masing membuat sesi lanjutan sendiri — dua child untuk
+        // satu parent.
+        //
+        // Sekarang lockForUpdate() pada baris parent dipanggil PALING AWAL
+        // di dalam transaksi. Pada MySQL (produksi), transaksi kedua yang
+        // mencoba mengunci parent yang sama akan BENAR-BENAR menunggu
+        // (blocking) sampai transaksi pertama commit/rollback — begitu
+        // transaksi kedua lanjut, ia menghitung ulang $hasChildLanjutan dan
+        // akan melihat child yang baru saja dibuat transaksi pertama,
+        // sehingga tidak ikut membuat child kedua. Pada SQLite (dipakai
+        // test), FOR UPDATE diabaikan dengan aman (lihat catatan yang sama
+        // di ScheduleService::runLocked()) — race condition lintas-thread
+        // sungguhan tidak bisa disimulasikan di sana, tapi urutan
+        // baca-lalu-tulis yang benar (baca DALAM transaksi, setelah lock)
+        // tetap tervalidasi oleh test yang memanggil simpan() dua kali
+        // berurutan pada parent yang sama.
+        //
+        // Sebagai lapisan pertahanan terakhir, unique index database pada
+        // pengajuan_sebelumnya_id (migration 2026_08_27_000001) tetap
+        // dipertahankan — kalau karena sebab apa pun (mis. lock gagal
+        // ter-acquire di driver DB tertentu) dua insert child tetap lolos
+        // sampai ke database, insert kedua akan gagal dengan
+        // QueryException yang ditangkap di buatSesiLanjutan() dan diubah
+        // jadi pesan yang aman ditampilkan ke user, bukan error 500 mentah.
+        return DB::transaction(function () use ($row, $data, $namaPembuatLaporan) {
+            $row = Konseling::where('id', $row->id)->lockForUpdate()->firstOrFail();
 
-        $hasChildLanjutan = Schema::hasColumn('konseling', 'pengajuan_sebelumnya_id')
-            && Konseling::where('pengajuan_sebelumnya_id', $row->id)->exists();
+            $hasLaporan = !empty($row->laporan_created_at) || !empty($row->laporan_kesimpulan);
 
-        // --- Semua validasi business rule dilakukan SEBELUM ada perubahan
-        // apa pun ke database, supaya tidak ada state setengah-tersimpan. ---
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 6): sebelumnya kewajiban
+            // sesi lanjutan untuk status Monitoring hanya diperiksa/ dibuat
+            // ketika !$hasLaporan (laporan PERTAMA). Akibatnya, laporan awal
+            // dengan status penanganan Selesai lalu diedit (dalam window 72
+            // jam) menjadi Monitoring tidak pernah lolos validasi wajib sesi
+            // lanjutan DAN tidak pernah membuat sesi lanjutan — karena
+            // $hasLaporan sudah true. Bisa terbentuk status_penanganan =
+            // Monitoring tanpa sesi lanjutan sama sekali.
+            //
+            // Sekarang yang menentukan wajib/tidaknya sesi lanjutan bukan lagi
+            // "apakah ini laporan pertama", melainkan "apakah konseling ini
+            // SUDAH punya sesi lanjutan (child)". child ditandai lewat kolom
+            // pengajuan_sebelumnya_id yang menunjuk ke $row->id (lihat
+            // buatSesiLanjutan()). Jadi:
+            //  - Laporan pertama, status Monitoring → wajib buat sesi lanjutan
+            //    (seperti sebelumnya, karena belum ada child).
+            //  - Edit laporan yang MENGUBAH status jadi Monitoring dan BELUM
+            //    punya child → tetap wajib mengisi & membuat sesi lanjutan.
+            //  - Edit laporan yang statusnya sudah Monitoring dan child SUDAH
+            //    ada (dibuat sebelumnya) → tidak diminta lagi / tidak dibuat
+            //    duplikat.
+            $hasChildLanjutan = Schema::hasColumn('konseling', 'pengajuan_sebelumnya_id')
+                && Konseling::where('pengajuan_sebelumnya_id', $row->id)->exists();
 
-        if ($hasLaporan && $row->laporan_created_at) {
-            $created = \Carbon\Carbon::parse($row->laporan_created_at);
-            $jamBerlalu = $created->diffInMinutes(now()) / 60;
-            if ($jamBerlalu > self::WINDOW_HOURS) {
-                throw new \RuntimeException(
-                    'Laporan terkunci. Batas edit ' . self::WINDOW_HOURS . ' jam setelah pertama disimpan sudah lewat.'
-                );
+            // --- Semua validasi business rule dilakukan SEBELUM ada perubahan
+            // apa pun ke database, supaya tidak ada state setengah-tersimpan. ---
+
+            if ($hasLaporan && $row->laporan_created_at) {
+                $created = \Carbon\Carbon::parse($row->laporan_created_at);
+                $jamBerlalu = $created->diffInMinutes(now()) / 60;
+                if ($jamBerlalu > self::WINDOW_HOURS) {
+                    throw new \RuntimeException(
+                        'Laporan terkunci. Batas edit ' . self::WINDOW_HOURS . ' jam setelah pertama disimpan sudah lewat.'
+                    );
+                }
             }
-        }
 
-        if (!$hasLaporan && (!$row->isKonfirmasi() || ($row->status ?? '') === 'Dibatalkan')) {
-            throw new \RuntimeException('Laporan hanya untuk sesi yang sudah dikonfirmasi dan belum dibatalkan.');
-        }
-
-        // Kesimpulan, rekomendasi & status penanganan wajib diisi untuk
-        // laporan PERTAMA (menyelesaikan konseling). Dicek di sini —
-        // bukan hanya lewat rule Validator di controller — supaya jalur
-        // mana pun yang memanggil service ini tidak bisa lolos dengan
-        // field kosong, meski suatu saat ada jalur ketiga.
-        if (!$hasLaporan) {
-            if (empty($data['laporan_kesimpulan']) || empty($data['laporan_rekomendasi']) || empty($data['laporan_status_penanganan'])) {
-                throw new \RuntimeException('Kesimpulan, rekomendasi, dan status penanganan wajib diisi untuk menyelesaikan konseling.');
+            if (!$hasLaporan && (!$row->isKonfirmasi() || ($row->status ?? '') === 'Dibatalkan')) {
+                throw new \RuntimeException('Laporan hanya untuk sesi yang sudah dikonfirmasi dan belum dibatalkan.');
             }
-        }
 
-        if (!empty($data['laporan_status_penanganan']) && !in_array($data['laporan_status_penanganan'], StatusPenanganan::ALL, true)) {
-            throw new \RuntimeException('Status penanganan tidak valid.');
-        }
+            // Kesimpulan, rekomendasi & status penanganan wajib diisi untuk
+            // laporan PERTAMA (menyelesaikan konseling). Dicek di sini —
+            // bukan hanya lewat rule Validator di controller — supaya jalur
+            // mana pun yang memanggil service ini tidak bisa lolos dengan
+            // field kosong, meski suatu saat ada jalur ketiga.
+            if (!$hasLaporan) {
+                if (empty($data['laporan_kesimpulan']) || empty($data['laporan_rekomendasi']) || empty($data['laporan_status_penanganan'])) {
+                    throw new \RuntimeException('Kesimpulan, rekomendasi, dan status penanganan wajib diisi untuk menyelesaikan konseling.');
+                }
+            }
 
-        // Sesi lanjutan wajib tanggal & jam kalau status penanganan Monitoring
-        // dan belum ada sesi lanjutan (child) untuk konseling ini.
-        $statusPenanganan = $data['laporan_status_penanganan'] ?? $row->laporan_status_penanganan;
-        $buatLanjutan = !empty($data['buat_lanjutan']) || $statusPenanganan === StatusPenanganan::MONITORING;
-        $lanjutanLengkap = !empty($data['lanjutan_tanggal']) && !empty($data['lanjutan_jam']);
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 6): lapisan pertahanan
+            // terakhir. Validasi Rule::in() di Web/API sudah menolak nilai
+            // di luar StatusPenanganan::ALL, tapi service ini bisa saja
+            // dipanggil dari jalur lain di masa depan — jadi diperiksa ulang
+            // di sini juga, bukan hanya dipercaya dari controller.
+            if (!empty($data['laporan_status_penanganan']) && !in_array($data['laporan_status_penanganan'], StatusPenanganan::ALL, true)) {
+                throw new \RuntimeException('Status penanganan tidak valid.');
+            }
 
-        if ($statusPenanganan === StatusPenanganan::MONITORING && !$hasChildLanjutan && !$lanjutanLengkap) {
-            throw new \RuntimeException('Status Monitoring: isi tanggal & jam sesi lanjutan.');
-        }
+            // Sesi lanjutan wajib tanggal & jam kalau status penanganan Monitoring
+            // dan belum ada sesi lanjutan (child) untuk konseling ini.
+            $statusPenanganan = $data['laporan_status_penanganan'] ?? $row->laporan_status_penanganan;
+            $buatLanjutan = !empty($data['buat_lanjutan']) || $statusPenanganan === StatusPenanganan::MONITORING;
+            $lanjutanLengkap = !empty($data['lanjutan_tanggal']) && !empty($data['lanjutan_jam']);
 
-        // --- Semua valid. Simpan laporan, ubah status, buat sesi lanjutan,
-        // dan notifikasi dalam satu transaksi — gagal satu, rollback semua. ---
+            if ($statusPenanganan === StatusPenanganan::MONITORING && !$hasChildLanjutan && !$lanjutanLengkap) {
+                throw new \RuntimeException('Status Monitoring: isi tanggal & jam sesi lanjutan.');
+            }
 
-        return DB::transaction(function () use ($row, $data, $hasLaporan, $hasChildLanjutan, $buatLanjutan, $lanjutanLengkap, $namaPembuatLaporan) {
+            // --- Semua valid. Simpan laporan, ubah status, buat sesi lanjutan,
+            // dan notifikasi — masih dalam transaksi & lock yang sama di atas,
+            // gagal satu, rollback semua. ---
+
             $row->laporan_kesimpulan = $data['laporan_kesimpulan'] ?? $row->laporan_kesimpulan;
             $row->laporan_rekomendasi = $data['laporan_rekomendasi'] ?? $row->laporan_rekomendasi;
             $row->laporan_status_penanganan = $data['laporan_status_penanganan'] ?? $row->laporan_status_penanganan;
 
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 7): sebelumnya baris
+            // ini langsung fallback ke '-' kalau request tidak mengirim
+            // laporan_catatan_tambahan. Untuk laporan PERTAMA itu wajar
+            // (memang belum ada catatan), tapi untuk EDIT laporan yang
+            // sudah punya catatan, request yang tidak menyertakan field ini
+            // (mis. form/consumer API lama yang tidak mengirim field
+            // tersebut) membuat catatan lama ikut terhapus jadi '-' tanpa
+            // pengguna sadar. Sekarang fallback-nya ke nilai lama pada
+            // $row dulu, baru ke '-' kalau memang belum pernah ada catatan
+            // sama sekali (laporan pertama / row baru).
             $row->laporan_catatan_tambahan = $data['laporan_catatan_tambahan']
                 ?? $row->laporan_catatan_tambahan
                 ?? '-';
@@ -167,7 +254,25 @@ class KonselingReportService
             $payload['pengajuan_sebelumnya_id'] = $parent->id;
         }
 
-        $child = Konseling::create($payload);
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 6): lockForUpdate() pada
+        // simpan() sudah mencegah hampir semua kasus race condition, tapi
+        // sebagai lapisan pertahanan TERAKHIR (mis. kalau suatu saat ada
+        // jalur lain yang memanggil buatSesiLanjutan() di luar simpan(),
+        // atau driver DB tertentu tidak benar-benar mengunci baris),
+        // pelanggaran unique constraint pada pengajuan_sebelumnya_id
+        // (migration 2026_08_27_000001) ditangkap di sini dan diubah jadi
+        // pesan yang aman ditampilkan ke user — bukan error 500 mentah
+        // dari QueryException.
+        try {
+            $child = Konseling::create($payload);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($this->isUniqueConstraintViolation($e)) {
+                throw new \RuntimeException(
+                    'Sesi lanjutan gagal dibuat: konseling ini sudah mempunyai sesi lanjutan (kemungkinan dibuat lewat request lain yang hampir bersamaan).'
+                );
+            }
+            throw $e;
+        }
 
         // Notifikasi siswa jika memungkinkan — pakai helper Notifikasi::buatUntuk()
         // (cast 'data' => array sudah ditangani model, tidak perlu json_encode manual).
@@ -187,5 +292,23 @@ class KonselingReportService
         }
 
         return $child;
+    }
+
+    /**
+     * Deteksi pelanggaran unique constraint lintas driver (MySQL kode
+     * error 1062, SQLite/Postgres pesan mengandung "UNIQUE constraint"/
+     * "duplicate key"). Dipakai HANYA untuk lapisan pertahanan terakhir di
+     * buatSesiLanjutan() — lihat komentar di sana.
+     */
+    private function isUniqueConstraintViolation(\Illuminate\Database\QueryException $e): bool
+    {
+        $sqlState = $e->errorInfo[0] ?? null;
+        $driverCode = $e->errorInfo[1] ?? null;
+        if ($sqlState === '23000' || $driverCode === 1062) {
+            return true;
+        }
+
+        return str_contains(strtolower($e->getMessage()), 'unique constraint')
+            || str_contains(strtolower($e->getMessage()), 'duplicate key');
     }
 }

@@ -31,6 +31,26 @@ class ProfileController extends Controller
 
     public function update(Request $request, string $nis): JsonResponse
     {
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 10): dulu di sini hanya
+        // dipakai assertSiswaOwnsNis(), yang meloloskan SELURUH staff
+        // (Guru BK, Kepsek, Admin) melewati pengecekan kepemilikan NIS —
+        // lalu $rules di bawah membuka jenis_kelamin/tanggal_lahir/
+        // alamat/no_telepon (dan kelas untuk staff) bagi siapa pun yang
+        // lolos di situ. Akibatnya Guru BK maupun Kepala Sekolah bisa
+        // mengubah profil siswa MANA PUN lewat API, padahal:
+        //  - Guru BK menurut hasil review hanya perlu hak baca (plus data
+        //    administratif tertentu BILA memang diberi kewenangan — belum
+        //    ada mekanisme kewenangan semacam itu, jadi defaultnya baca
+        //    saja untuk sekarang).
+        //  - Kepala Sekolah eksplisit read-only; tidak ada alasan proses
+        //    bisnis untuk kepsek mengubah kelas/data siswa.
+        //  - Admin adalah pengelola master akademik, jadi tetap boleh
+        //    mengubah field administratif siswa mana pun.
+        // Sekarang: siswa hanya boleh mengubah profilnya sendiri (dicek
+        // via assertSiswaOwnsNis(), yang bagi non-staff berarti wajib
+        // pemilik NIS); Admin boleh mengubah profil siswa mana pun; Guru
+        // BK & Kepsek ditolak total di endpoint tulis ini — mereka tetap
+        // bisa membaca lewat get().
         if ($this->isGuru($request) || $this->isKepsek($request)) {
             return response()->json([
                 'success' => false,
@@ -63,10 +83,27 @@ class ProfileController extends Controller
             $rules['kelas'] = 'sometimes|string|max:20';
         }
 
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 1): 'password' SENGAJA
+        // tidak dibuka untuk seluruh staff. Guru BK/Kepsek sudah ditolak
+        // total di atas (poin 10), jadi baris ini sekarang hanya relevan
+        // untuk siswa sendiri atau Admin. Reset password siswa hanya
+        // boleh dilakukan oleh siswa itu sendiri (ganti password sendiri)
+        // atau Admin (mengelola akun siswa) — sama seperti pembatasan
+        // create siswa yang sudah 'ability:admin' di routes/api.php.
         if ($this->isSiswa($request) || $this->isAdmin($request)) {
             $rules['password'] = 'nullable|string|min:6';
         }
 
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 13): dulu siswa bisa
+        // mengganti password sendiri tanpa diminta password lama sama
+        // sekali. Kalau session/token siswa berhasil diambil orang lain,
+        // attacker bisa langsung ganti password dan mengunci pemilik asli
+        // dari akunnya sendiri. Sekarang khusus jalur SISWA (bukan Admin
+        // yang mereset), 'current_password' wajib diisi setiap kali field
+        // 'password' dikirim, dan divalidasi cocok dengan password yang
+        // tersimpan SEBELUM password baru disimpan. Admin sengaja
+        // dikecualikan — proses reset oleh Admin memang tidak mengetahui
+        // password lama siswa (lihat poin 13 pada revisi).
         if ($this->isSiswa($request)) {
             $rules['current_password'] = 'required_with:password|string';
         }
@@ -88,10 +125,28 @@ class ProfileController extends Controller
         if (empty($data['password'])) {
             unset($data['password']);
         } else {
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): kalau siswa
+            // sendiri yang mengganti password (bukan Admin), itu sudah
+            // password pilihannya sendiri — bebaskan dari kewajiban ganti
+            // password. Kalau Admin yang mereset, password baru itu tetap
+            // ditentukan orang lain, jadi tetap wajib diganti lagi saat
+            // siswa login berikutnya.
             $data['must_change_password'] = !$this->isSiswa($request);
         }
         $siswa->fill($data)->save();
 
+        // PERBAIKAN BUG (ditemukan saat menjalankan test poin 10): baris
+        // ini sebelumnya memanggil $siswa->fresh([...]) dengan daftar NAMA
+        // KOLOM ('id', 'nis', dst). Model::fresh() TIDAK menerima daftar
+        // kolom — argumennya adalah daftar RELASI yang mau di-eager-load
+        // (sama seperti with()). Karena 'id' bukan nama relasi pada model
+        // Siswa, Eloquent mencoba memanggil method id() sebagai relasi dan
+        // melempar RelationNotFoundException (500) setiap kali baris ini
+        // dieksekusi — sebelumnya tidak pernah ketahuan karena belum ada
+        // test yang benar-benar sampai ke titik ini dengan assertOk().
+        // Perbaikannya: reload penuh via refresh(), lalu pilih kolom yang
+        // aman ditampilkan dengan only() di level array PHP, bukan lewat
+        // argumen fresh()/with().
         $siswa->refresh();
 
         // collect()->only() dipakai (bukan Model::only(), yang tidak ada
@@ -108,6 +163,13 @@ class ProfileController extends Controller
 
     public function updateFoto(Request $request, string $nis): JsonResponse
     {
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 10): sama seperti
+        // update() di atas — dulu Guru BK maupun Kepala Sekolah bisa
+        // mengganti foto siswa mana pun karena assertSiswaOwnsNis()
+        // meloloskan seluruh staff. Review secara eksplisit menyebut
+        // tidak ada alasan proses bisnis bagi Kepsek untuk mengubah foto
+        // siswa; Guru BK juga belum punya kewenangan khusus untuk itu.
+        // Hanya siswa pemilik dan Admin yang boleh mengganti foto.
         if ($this->isGuru($request) || $this->isKepsek($request)) {
             return response()->json([
                 'success' => false,
@@ -159,6 +221,9 @@ class ProfileController extends Controller
 
     public function deleteFoto(Request $request, string $nis): JsonResponse
     {
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 10): lihat penjelasan di
+        // updateFoto()/update() — hapus foto disamakan dengan ubah foto,
+        // Guru BK & Kepsek ditolak, hanya siswa pemilik & Admin yang boleh.
         if ($this->isGuru($request) || $this->isKepsek($request)) {
             return response()->json([
                 'success' => false,

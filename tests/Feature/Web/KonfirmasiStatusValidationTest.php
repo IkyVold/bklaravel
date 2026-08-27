@@ -8,6 +8,15 @@ use App\Models\Siswa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 25 Agustus 2026, poin 9): Web/KonselingController@konfirmasi
+ * dulu memvalidasi status_konfirmasi dengan 'nullable|string|max:30' —
+ * nilai bebas apa pun bisa dikirim client, sementara $row->status tetap
+ * dipaksa 'Proses' tanpa syarat. Kalau field dimanipulasi (mis. dikirim
+ * "Ditolak"), bisa terbentuk state ganjil status=Proses &
+ * status_konfirmasi=Ditolak. Sekarang nilainya dikunci ke satu-satunya
+ * pilihan yang sah untuk form ini: 'Terkonfirmasi'.
+ */
 class KonfirmasiStatusValidationTest extends TestCase
 {
     use RefreshDatabase;
@@ -18,6 +27,12 @@ class KonfirmasiStatusValidationTest extends TestCase
             'auth_role' => 'guru',
             'auth_id' => $guru->id,
             'auth_user' => ['username' => $guru->username, 'nama' => $guru->nama],
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 3): baseline
+            // password_version wajib disertakan, sama seperti yang
+            // dilakukan Web\AuthController@loginStaff saat login
+            // sungguhan — kalau tidak, RoleAuth akan menganggap password
+            // sudah berubah sejak session ini dibuat dan memaksa logout.
+            'auth_password_version' => (int) $guru->password_version,
         ]);
     }
 

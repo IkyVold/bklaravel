@@ -6,6 +6,14 @@ use App\Models\Siswa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 26 Agustus 2026, poin 2): dulu limiter login hanya
+ * berbasis "role:identifier:ip", sehingga satu IP yang mengganti-ganti NIS
+ * setiap percobaan tidak pernah mencapai batas 5 kali pada satu bucket
+ * manapun. Sekarang ditambahkan limiter kedua yang murni berbasis IP
+ * (lintas akun), sehingga percobaan brute force dengan NIS berbeda-beda
+ * dari IP yang sama tetap dibatasi.
+ */
 class GlobalIpLoginThrottleTest extends TestCase
 {
     use RefreshDatabase;

@@ -25,6 +25,22 @@ class AuthenticationService
     private const THROTTLE_MAX_ATTEMPTS = 5;
     private const THROTTLE_DECAY_SECONDS = 60; // 1 menit
 
+    /**
+     * PERBAIKAN (revisi 26 Agustus 2026, poin 2): burst throttle di atas
+     * (THROTTLE_MAX_ATTEMPTS) memakai key "role:identifier:ip", sehingga
+     * setiap NIS/username punya bucket sendiri-sendiri walau berasal dari
+     * IP yang sama. Satu IP dapat mencoba banyak NIS berbeda tanpa pernah
+     * mencapai batas 5 kali pada satu bucket manapun — cukup berbahaya
+     * karena password awal siswa masih sama dengan NIS-nya sendiri.
+     *
+     * Limiter kedua ini HANYA berdasarkan IP (lintas akun/role) sebagai
+     * lapisan tambahan: berapa pun NIS/username yang dicoba, satu IP tetap
+     * dibatasi jumlah total percobaan login gagalnya dalam jendela waktu
+     * yang sama. Ambangnya dibuat lebih longgar daripada limiter per-akun
+     * (20, bukan 5) supaya IP yang dipakai bersama banyak siswa yang sah
+     * (mis. satu jaringan sekolah) tidak mudah terkunci oleh aktivitas
+     * normal, tetapi tetap menutup celah brute force lintas-NIS.
+     */
     private const GLOBAL_IP_MAX_ATTEMPTS = 20;
     private const GLOBAL_IP_DECAY_SECONDS = 60; // 1 menit
 

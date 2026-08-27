@@ -9,6 +9,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 25 Agustus 2026, poin 7): listByGuru() dulu memfilter
+ * dengan OR independen (guru_id COCOK ATAU guru_bk COCOK NAMA), sehingga
+ * dua Guru BK dengan nama sama persis bisa saling melihat record satu
+ * sama lain lewat daftar konsultasi walau guru_id-nya berbeda. Sekarang
+ * begitu konseling punya guru_id, itu satu-satunya sumber kebenaran;
+ * fallback nama hanya untuk data lama (guru_id null).
+ */
 class ListByGuruNameFallbackTest extends TestCase
 {
     use RefreshDatabase;

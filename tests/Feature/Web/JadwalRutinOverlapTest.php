@@ -6,6 +6,11 @@ use App\Models\GuruBk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi: JadwalRutinController dulu hanya memvalidasi format
+ * jam, bukan interval-nya — slot 10.00-09.00 atau dua slot yang saling
+ * overlap (08.00-10.00 & 09.00-11.00) masih bisa tersimpan.
+ */
 class JadwalRutinOverlapTest extends TestCase
 {
     use RefreshDatabase;
@@ -16,6 +21,12 @@ class JadwalRutinOverlapTest extends TestCase
             'auth_role' => 'guru',
             'auth_id' => $guru->id,
             'auth_user' => ['username' => $guru->username, 'nama' => $guru->nama],
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 3): baseline
+            // password_version wajib disertakan, sama seperti yang
+            // dilakukan Web\AuthController@loginStaff saat login
+            // sungguhan — kalau tidak, RoleAuth akan menganggap password
+            // sudah berubah sejak session ini dibuat dan memaksa logout.
+            'auth_password_version' => (int) $guru->password_version,
         ]);
     }
 

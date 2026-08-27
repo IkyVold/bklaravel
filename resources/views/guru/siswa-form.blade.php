@@ -26,7 +26,7 @@
                     @if($siswa) @method('PUT') @endif
                     <div class="form-group">
                         <label>NIS</label>
-                        <input type="text" name="nis" class="form-control" value="{{ old('nis', $siswa->nis ?? '') }}" required maxlength="20">
+                        <input type="text" name="nis" class="form-control" value="{{ old('nis', $siswa->nis ?? '') }}" required maxlength="4" pattern="[0-9]{4}" placeholder="4 digit angka">
                     </div>
                     <div class="form-group">
                         <label>Nama lengkap</label>

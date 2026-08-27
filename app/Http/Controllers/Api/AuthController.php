@@ -47,6 +47,21 @@ class AuthController extends Controller
             return response()->json(['success' => false, 'message' => 'NIS dan password harus diisi'], 400);
         }
 
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 8): diseragamkan dengan
+        // aturan NIS di seluruh sistem (tepat 4 digit angka) — sebelumnya
+        // jalur API ini menerima NIS format apa pun dan hanya mengandalkan
+        // pencarian di database untuk menolaknya (pesan generik "salah"),
+        // sedangkan jalur Web sudah menolak lebih awal lewat validasi.
+        if (!preg_match('/^[0-9]{4}$/', $nis)) {
+            return response()->json(['success' => false, 'message' => 'Format NIS tidak valid'], 400);
+        }
+
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 2): limiter global per-IP
+        // dicek LEBIH DULU, sebelum limiter per-akun. Limiter per-akun di
+        // bawah memakai bucket "siswa:{nis}:{ip}" — satu IP yang mengganti
+        // NIS setiap percobaan akan selalu mendapat bucket baru dan tidak
+        // pernah kena batasnya. Limiter IP ini melihat lintas NIS/role
+        // sekaligus, sehingga tetap membatasi walau NIS-nya diganti-ganti.
         $ipKey = $this->auth->ipThrottleKey($request);
         if ($this->auth->tooManyIpAttempts($ipKey)) {
             $seconds = $this->auth->ipAvailableIn($ipKey);
@@ -108,6 +123,11 @@ class AuthController extends Controller
             'success' => true,
             'token' => $token,
             'role' => 'siswa',
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): frontend perlu
+            // tahu di respons login ini kalau siswa wajib mengganti
+            // password default sebelum bisa memakai fitur lain — endpoint
+            // lain akan menolak (423) lewat EnsurePasswordChanged middleware
+            // selama flag ini masih true.
             'must_change_password' => (bool) $siswa->must_change_password,
             'user' => [
                 'id' => $siswa->id,
@@ -125,6 +145,10 @@ class AuthController extends Controller
             return response()->json(['success' => false, 'message' => 'Username dan password harus diisi'], 400);
         }
 
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 2): sama seperti
+        // loginSiswa() — limiter global per-IP dicek lebih dulu supaya
+        // satu IP tidak bisa lolos batas hanya dengan mengganti-ganti
+        // username.
         $ipKey = $this->auth->ipThrottleKey($request);
         if ($this->auth->tooManyIpAttempts($ipKey)) {
             $seconds = $this->auth->ipAvailableIn($ipKey);

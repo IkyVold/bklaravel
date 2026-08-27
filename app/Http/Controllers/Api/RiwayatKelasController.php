@@ -25,7 +25,10 @@ class RiwayatKelasController extends Controller
     public function create(Request $request): JsonResponse
     {
         $v = Validator::make($request->all(), [
-            'nis' => 'required|string|max:20',
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 8): dulu
+            // 'string|max:20' — diseragamkan dengan aturan NIS di seluruh
+            // sistem (tepat 4 digit angka).
+            'nis' => 'required|digits:4',
             'tahun_ajaran' => 'required|string|max:9',
             'kelas' => 'required|string|max:20',
             'status' => 'nullable|in:aktif,arsip',

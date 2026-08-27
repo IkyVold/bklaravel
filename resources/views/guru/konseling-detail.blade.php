@@ -76,6 +76,13 @@
     $jamOptions = [];
     for ($h = 7; $h <= 17; $h++) foreach (['00','30'] as $m) $jamOptions[] = sprintf('%02d:%s', $h, $m);
     $guruNama = $row->guru_bk ?? (session('auth_user')['nama'] ?? 'Guru BK');
+    // PERBAIKAN (revisi 26 Agustus 2026, poin 6): dulu daftar ini
+    // hardcode terpisah di sini, terlepas dari validasi di controller —
+    // berisiko diam-diam berbeda kalau salah satu diubah tanpa mengubah
+    // yang lain. Sekarang dropdown ini SATU-SATUNYA UI yang menampilkan
+    // pilihan status penanganan, dan sumber datanya sama persis dengan
+    // yang divalidasi Rule::in() di Web/Api KonselingController — lihat
+    // App\Support\StatusPenanganan.
     $statusPenangananOptions = \App\Support\StatusPenanganan::LABELS;
     $lanjutanDefault = now()->addDays(7)->format('Y-m-d');
 @endphp

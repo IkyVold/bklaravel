@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Admin;
 use App\Models\GuruBk;
 use App\Models\Kepsek;
 use App\Models\Konseling;
@@ -10,6 +11,18 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi paling kritikal: assertGuruOwnsKonseling() lama
+ * meloloskan siswa pemilik konsultasi untuk konfirmasi/laporan/ubah status
+ * — padahal tindakan itu seharusnya wewenang Guru BK saja. Sekarang
+ * assertGuruCanManageKonseling() TIDAK PERNAH meloloskan siswa, dan Guru A
+ * tidak boleh mengelola konsultasi milik Guru B.
+ *
+ * PERBAIKAN (revisi 26 Agustus 2026, poin 1): Admin sebelumnya selalu
+ * diloloskan assertGuruCanManageKonseling() walau isi konsultasi sudah
+ * disensor dari Admin saat dibaca. Sekarang Admin juga tidak boleh
+ * mengonfirmasi/membuat laporan/mengubah status — hanya Guru BK pemilik.
+ */
 class KonselingAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
@@ -89,6 +102,71 @@ class KonselingAuthorizationTest extends TestCase
 
         $this->putJson("/api/konseling/{$row->id}/konfirmasi", [])
             ->assertOk();
+
+        $this->assertSame('Proses', $row->fresh()->status);
+    }
+
+    public function test_admin_tidak_bisa_konfirmasi_konsultasi(): void
+    {
+        $siswa = Siswa::factory()->create();
+        $guru = GuruBk::factory()->create();
+        $admin = Admin::factory()->create();
+
+        $row = Konseling::factory()->create([
+            'siswa_id' => $siswa->id,
+            'guru_id' => $guru->id,
+            'guru_bk' => $guru->nama,
+            'status' => 'Menunggu',
+        ]);
+
+        Sanctum::actingAs($admin, ['admin']);
+
+        $this->putJson("/api/konseling/{$row->id}/konfirmasi", [])
+            ->assertForbidden();
+
+        $this->assertSame('Menunggu', $row->fresh()->status);
+    }
+
+    public function test_admin_tidak_bisa_membuat_laporan_konsultasi(): void
+    {
+        $siswa = Siswa::factory()->create();
+        $guru = GuruBk::factory()->create();
+        $admin = Admin::factory()->create();
+
+        $row = Konseling::factory()->create([
+            'siswa_id' => $siswa->id,
+            'guru_id' => $guru->id,
+            'guru_bk' => $guru->nama,
+            'status' => 'Proses',
+            'status_konfirmasi' => 'Dikonfirmasi',
+        ]);
+
+        Sanctum::actingAs($admin, ['admin']);
+
+        $this->putJson("/api/konseling/{$row->id}/laporan", [
+            'laporan_kesimpulan' => 'Coba isi sebagai admin',
+        ])->assertForbidden();
+    }
+
+    public function test_admin_tidak_bisa_mengubah_status_konsultasi(): void
+    {
+        $siswa = Siswa::factory()->create();
+        $guru = GuruBk::factory()->create();
+        $admin = Admin::factory()->create();
+
+        $row = Konseling::factory()->create([
+            'siswa_id' => $siswa->id,
+            'guru_id' => $guru->id,
+            'guru_bk' => $guru->nama,
+            'status' => 'Proses',
+            'status_konfirmasi' => 'Dikonfirmasi',
+        ]);
+
+        Sanctum::actingAs($admin, ['admin']);
+
+        $this->putJson("/api/konseling/{$row->id}/status", [
+            'status' => 'Selesai',
+        ])->assertForbidden();
 
         $this->assertSame('Proses', $row->fresh()->status);
     }

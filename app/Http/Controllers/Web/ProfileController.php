@@ -24,6 +24,14 @@ class ProfileController extends Controller
         // Update satu field (match React modal edit)
         if ($request->filled('edit_field')) {
             $field = $request->input('edit_field');
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): 'password'
+            // ditambahkan ke daftar field yang boleh diubah lewat modal
+            // ini. Sebelumnya halaman profil siswa TIDAK punya cara sama
+            // sekali untuk mengganti password lewat web (hanya tersedia
+            // lewat API) — padahal mekanisme wajib-ganti-password-default
+            // (poin 11) mengharuskan siswa punya jalan nyata untuk
+            // mematuhinya di web juga, bukan hanya diblokir tanpa jalan
+            // keluar.
             $allowed = ['jenis_kelamin', 'tanggal_lahir', 'alamat', 'no_telepon', 'password'];
             if (!in_array($field, $allowed, true)) {
                 return back()->with('error', 'Field tidak diizinkan.');
@@ -34,12 +42,22 @@ class ProfileController extends Controller
                 'tanggal_lahir' => ['edit_value' => 'nullable|date'],
                 'alamat' => ['edit_value' => 'nullable|string|max:500'],
                 'no_telepon' => ['edit_value' => 'nullable|string|max:30'],
+                // PERBAIKAN (revisi 25 Agustus 2026, poin 13): 'current_password'
+                // wajib diisi saat mengganti password lewat modal ini —
+                // lihat penjelasan lengkap di bawah pada blok $field === 'password'.
                 'password' => ['edit_value' => 'required|string|min:6|confirmed', 'current_password' => 'required|string'],
                 default => ['edit_value' => 'nullable|string'],
             };
             $request->validate($rules);
 
             if ($field === 'password') {
+                // PERBAIKAN (revisi 25 Agustus 2026, poin 13): dulu siswa
+                // bisa mengganti password sendiri tanpa diminta password
+                // lama sama sekali. Kalau session siswa berhasil diambil
+                // orang lain, attacker bisa langsung ganti password dan
+                // mengunci pemilik asli dari akunnya sendiri. Sekarang
+                // password lama wajib dicocokkan dulu SEBELUM password
+                // baru disimpan.
                 if (!$siswa->verifyPassword((string) $request->input('current_password'))) {
                     return back()->with('error', 'Password saat ini tidak sesuai.');
                 }
@@ -72,6 +90,18 @@ class ProfileController extends Controller
             return back()->with('success', 'Foto profil berhasil diperbarui.');
         }
 
+        // Full form fallback (password opsional).
+        // 'nama' SENGAJA tidak divalidasi/diterima di sini — mode edit_field
+        // di atas sudah membatasi field yang boleh diubah siswa, dan
+        // fallback ini dulu membuka celah karena masih mengizinkan 'nama'.
+        // Nama, NIS, dan kelas adalah data administratif sekolah; ubahnya
+        // hanya lewat manajemen data siswa (Web/SiswaController), bukan
+        // lewat profil sendiri.
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 13): 'current_password'
+        // ditambahkan di sini juga (jalur fallback ini tidak dipakai UI
+        // saat ini, tapi tetap route yang bisa dipanggil langsung — kalau
+        // tidak disamakan, ini jadi celah untuk melewati kewajiban
+        // password lama yang baru dipasang di jalur edit_field di atas).
         $data = $request->validate([
             'jenis_kelamin' => 'nullable|string|max:20',
             'tanggal_lahir' => 'nullable|date',
@@ -97,6 +127,11 @@ class ProfileController extends Controller
         if (empty($data['password'])) {
             unset($data['password']);
         } else {
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): jalur ini hanya
+            // pernah dipakai siswa sendiri (route profil ini ada di bawah
+            // 'role:siswa'), jadi mengisi password di sini selalu berarti
+            // siswa mengganti password-nya sendiri — bebaskan dari
+            // kewajiban ganti password.
             $data['must_change_password'] = false;
         }
 

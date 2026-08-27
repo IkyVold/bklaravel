@@ -7,6 +7,13 @@ use App\Models\InformasiBk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi 26 Agustus 2026 #4 untuk jalur Web: dulu
+ * InformasiController::update()/destroy() hanya dibatasi oleh middleware
+ * role:guru, tanpa cek kepemilikan per-baris, sehingga Guru B bisa
+ * mengubah/menghapus informasi milik Guru A hanya dengan mengganti ID
+ * pada URL form.
+ */
 class InformasiOwnershipTest extends TestCase
 {
     use RefreshDatabase;
@@ -17,6 +24,12 @@ class InformasiOwnershipTest extends TestCase
             'auth_role' => 'guru',
             'auth_id' => $guru->id,
             'auth_user' => ['username' => $guru->username, 'nama' => $guru->nama],
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 3): baseline
+            // password_version wajib disertakan, sama seperti yang
+            // dilakukan Web\AuthController@loginStaff saat login
+            // sungguhan — kalau tidak, RoleAuth akan menganggap password
+            // sudah berubah sejak session ini dibuat dan memaksa logout.
+            'auth_password_version' => (int) $guru->password_version,
         ]);
     }
 

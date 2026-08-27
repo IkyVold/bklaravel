@@ -325,7 +325,7 @@
     <form method="POST" action="{{ route('guru.konseling.walkin.store') }}" style="padding:20px" id="formWalkin">
       @csrf
       <label style="display:block;font-size:12px;font-weight:700;color:#5F5E5A;margin-bottom:4px">NIS Siswa *</label>
-      <input type="text" name="nis" id="walkinNis" required pattern="[0-9]+" placeholder="Masukkan NIS" style="width:100%;padding:10px 12px;border:.5px solid #d3d1c7;border-radius:8px;margin-bottom:10px;box-sizing:border-box">
+      <input type="text" name="nis" id="walkinNis" required pattern="[0-9]{4}" maxlength="4" placeholder="Masukkan NIS (4 digit)" style="width:100%;padding:10px 12px;border:.5px solid #d3d1c7;border-radius:8px;margin-bottom:10px;box-sizing:border-box">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div>
           <label style="display:block;font-size:12px;font-weight:700;color:#5F5E5A;margin-bottom:4px">Nama</label>

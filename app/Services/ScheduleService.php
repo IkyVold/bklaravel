@@ -15,6 +15,15 @@ use Illuminate\Support\Facades\DB;
  */
 class ScheduleService
 {
+    /**
+     * PERBAIKAN (revisi 24 Agustus 2026, poin 11): sebelumnya bentrok hanya
+     * dideteksi kalau jam MULAI persis sama (where('jam', $jam)). Kalau
+     * sesi berdurasi 60 menit, sesi jam 10.00 dan sesi jam 10.30 jelas
+     * overlap tapi tidak akan terdeteksi. Sesi tanpa 'durasi_menit' terisi
+     * (data lama, atau jalur yang belum mengirim durasi) dianggap memakai
+     * durasi default ini — sama seperti pola DEFAULT_DURATION_MINUTES yang
+     * sudah dipakai JadwalRutinController untuk slot tanpa jam_selesai.
+     */
     public const DEFAULT_DURATION_MINUTES = 60;
 
     /**
@@ -34,6 +43,30 @@ class ScheduleService
         ?int $durasiMenit = null,
         ?int $excludeId = null
     ): bool {
+        // PENTING: gunakan whereDate(), bukan where('tanggal', ...). Kolom
+        // 'tanggal' di-cast sebagai 'date' pada model Konseling, dan Eloquent
+        // secara default menyimpan cast tanggal dengan format lengkap
+        // "Y-m-d H:i:s" (bukan "Y-m-d") kecuali format eksplisit diberikan.
+        // Perbandingan string mentah where('tanggal', 'Y-m-d') tidak akan
+        // pernah cocok dengan nilai tersimpan "Y-m-d 00:00:00", sehingga
+        // bentrok jadwal tidak pernah terdeteksi. whereDate() membandingkan
+        // hanya bagian tanggalnya sehingga aman terhadap format penyimpanan.
+        //
+        // Filter jam TIDAK lagi dilakukan di query ini (lihat poin 11 di
+        // atas) — kandidat yang cocok siswa/guru pada tanggal tsb diambil
+        // semua, lalu overlap interval dihitung di PHP seperti
+        // JadwalRutinController::assertNoOverlap().
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 8): dulu filter guru di
+        // sini pakai OR independen (guru_id COCOK ATAU guru_bk COCOK NAMA),
+        // persis pola bug yang sama dengan listByGuru() (poin 7) dan
+        // ownership check lama (poin 24 Agustus, poin 8) — kalau ada dua
+        // Guru BK dengan nama sama persis, jadwal Guru A bisa dianggap
+        // bentrok dengan jadwal Guru B hanya karena namanya sama, padahal
+        // guru_id keduanya berbeda. Sekarang begitu $guruId diberikan, itu
+        // SATU-SATUNYA sumber kebenaran untuk mencocokkan guru; fallback
+        // nama HANYA dipakai untuk mencocokkan baris lama yang guru_id-nya
+        // memang null (data sebelum kolom guru_id ada) — konsisten dengan
+        // guruOwnsKonseling() di AuthorizesBk.
         $query = Konseling::whereDate('tanggal', $tanggal)
             ->whereNotIn('status', ['Dibatalkan', 'Ditolak', 'Selesai'])
             ->where(function ($q) use ($siswaId, $guruId, $guruBk) {
@@ -101,6 +134,46 @@ class ScheduleService
         );
     }
 
+    /**
+     * PERBAIKAN (revisi 26 Agustus 2026, poin 8): hasConflict() dulu selalu
+     * dipanggil terpisah dari Konseling::create()/save() di controller —
+     * pola "cek dulu → baru simpan" tanpa penguncian apa pun. Dua request
+     * yang datang hampir bersamaan (mis. dua siswa mengajukan slot yang
+     * sama, atau siswa & walk-in bentrok) bisa SAMA-SAMA menjalankan cek
+     * konflik sebelum salah satunya sempat menyimpan baris barunya —
+     * keduanya melihat slot masih kosong dan keduanya lolos.
+     *
+     * Metode ini membungkus "cek konflik → simpan/ubah" milik pemanggil
+     * dalam satu transaksi DB, dan sebelum callback dijalankan, mengunci
+     * (SELECT ... FOR UPDATE) baris GuruBk dan/atau Siswa yang terlibat.
+     * Baris guru/siswa itu sendiri TIDAK diubah isinya — kuncinya dipakai
+     * murni sebagai mutex, supaya request kedua yang menyentuh guru/siswa
+     * yang sama dipaksa menunggu sampai transaksi pertama selesai. Begitu
+     * request kedua akhirnya berjalan, hasConflict() di dalamnya akan
+     * melihat baris yang baru saja disimpan oleh request pertama.
+     *
+     * Locking di sini SENGAJA berbasis baris GuruBk/Siswa (bukan baris
+     * Konseling) karena slot yang baru diajukan mungkin belum punya baris
+     * Konseling sama sekali saat pengecekan berjalan — mengunci sesuatu
+     * yang belum ada tidak mencegah race condition. Guru/siswa sudah pasti
+     * ada sebelum pengajuan dibuat, jadi baris itulah yang dijadikan titik
+     * sinkronisasi.
+     *
+     * Urutan penguncian (GuruBk dulu, baru Siswa; masing-masing diurutkan
+     * naik berdasarkan id) SENGAJA dibuat selalu sama di semua pemanggil,
+     * supaya dua transaksi yang saling melibatkan guru/siswa berbeda tidak
+     * saling menunggu satu sama lain secara melingkar (deadlock).
+     *
+     * Pada koneksi MySQL (produksi) ini benar-benar mengunci baris.
+     * Pada SQLite (dipakai test), grammar SQLite mengabaikan klausa
+     * FOR UPDATE dengan aman (tidak error) — transaksi tetap berjalan
+     * seperti biasa, hanya tanpa penguncian baris eksplisit tambahan.
+     *
+     * @template T
+     * @param  \Closure(): T  $callback  Berisi hasConflict()/hasConflictFor()
+     *                                    lalu create()/save() milik pemanggil.
+     * @return T
+     */
     public function runLocked(?int $guruId, ?int $siswaId, \Closure $callback)
     {
         return DB::transaction(function () use ($guruId, $siswaId, $callback) {

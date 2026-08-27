@@ -9,6 +9,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 25 Agustus 2026, poin 8): ScheduleService::hasConflict()
+ * dulu memfilter guru dengan OR independen (guru_id COCOK ATAU guru_bk
+ * COCOK NAMA). Kalau ada dua Guru BK dengan nama sama persis, jadwal
+ * milik Guru A bisa dianggap bentrok dengan permintaan jadwal Guru B
+ * hanya karena namanya kebetulan sama, walau guru_id keduanya berbeda.
+ * Sekarang begitu guru_id terisi, itu satu-satunya sumber kebenaran;
+ * fallback nama hanya dipakai untuk data lama yang guru_id-nya null.
+ */
 class ScheduleConflictSameNameGuruTest extends TestCase
 {
     use RefreshDatabase;
@@ -27,7 +36,7 @@ class ScheduleConflictSameNameGuruTest extends TestCase
             'guru_id' => $guruA->id,
             'guru_bk' => $guruA->nama,
             'tanggal' => now()->addDays(30)->toDateString(),
-            'jam' => '10:00:00',
+            'jam' => '10:00',
             'status' => 'Menunggu',
         ]);
 
@@ -39,7 +48,7 @@ class ScheduleConflictSameNameGuruTest extends TestCase
             'nis' => $siswaBaru->nis,
             'guru_id' => $guruB->id,
             'tanggal' => now()->addDays(30)->toDateString(),
-            'jam' => '10:00:00',
+            'jam' => '10:00',
             'jenis' => 'Luring',
             'kategori' => 'Akademik',
             'deskripsi' => str_repeat('Deskripsi pengajuan konseling. ', 2),
@@ -57,7 +66,7 @@ class ScheduleConflictSameNameGuruTest extends TestCase
             'guru_id' => $guru->id,
             'guru_bk' => $guru->nama,
             'tanggal' => now()->addDays(30)->toDateString(),
-            'jam' => '10:00:00',
+            'jam' => '10:00',
             'status' => 'Menunggu',
         ]);
 
@@ -67,7 +76,7 @@ class ScheduleConflictSameNameGuruTest extends TestCase
             'nis' => $siswaBaru->nis,
             'guru_id' => $guru->id,
             'tanggal' => now()->addDays(30)->toDateString(),
-            'jam' => '10:00:00',
+            'jam' => '10:00',
             'jenis' => 'Luring',
             'kategori' => 'Akademik',
             'deskripsi' => str_repeat('Deskripsi pengajuan konseling. ', 2),
@@ -86,7 +95,7 @@ class ScheduleConflictSameNameGuruTest extends TestCase
             'guru_id' => null,
             'guru_bk' => 'Budi Santoso',
             'tanggal' => now()->addDays(30)->toDateString(),
-            'jam' => '10:00:00',
+            'jam' => '10:00',
             'status' => 'Menunggu',
         ]);
 
@@ -96,7 +105,7 @@ class ScheduleConflictSameNameGuruTest extends TestCase
             'nis' => $siswaBaru->nis,
             'guru_id' => $guru->id,
             'tanggal' => now()->addDays(30)->toDateString(),
-            'jam' => '10:00:00',
+            'jam' => '10:00',
             'jenis' => 'Luring',
             'kategori' => 'Akademik',
             'deskripsi' => str_repeat('Deskripsi pengajuan konseling. ', 2),

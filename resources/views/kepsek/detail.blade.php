@@ -7,6 +7,14 @@
 @endpush
 @section('content')
 @php
+    // PERBAIKAN (revisi 24 Agustus 2026 — "Klaim kerahasiaan vs akses
+    // Kepala Sekolah"): $row sekarang array dari
+    // Konseling::untukMonitoringKepsek() (data administratif saja),
+    // BUKAN objek Konseling utuh — lihat Web\KepsekController::show().
+    // Jangan tambahkan akses ke deskripsi/laporan_kesimpulan/
+    // laporan_rekomendasi/laporan_catatan_tambahan di halaman ini; field
+    // tersebut sengaja tidak dikirim ke view karena itu isi/narasi
+    // konsultasi yang hanya boleh dilihat siswa & Guru BK yang bersangkutan.
     $siswa = $row['siswa'];
     $sk = $row['status_konfirmasi'] ?? 'Belum Dikonfirmasi';
     if (in_array($sk, ['Tervalidasi', 'Dikonfirmasi'], true)) {
@@ -72,6 +80,16 @@
                     <div class="detail-value">{{ !empty($row['ada_laporan']) ? 'Sudah dibuat oleh ' . ($row['laporan_dibuat_oleh'] ?? 'Guru BK') : 'Belum ada laporan' }}</div>
                 </div>
 
+                {{--
+                    PERBAIKAN (revisi 24 Agustus 2026 — "Klaim kerahasiaan vs akses
+                    Kepala Sekolah"): deskripsi masalah, kesimpulan, rekomendasi,
+                    dan catatan laporan SENGAJA tidak ditampilkan di sini. Field-
+                    field itu adalah isi/narasi substansi konsultasi, dan halaman
+                    siswa/konseling-pilih menjanjikan isi konsultasi hanya dapat
+                    diakses siswa yang bersangkutan & Guru BK yang dipilihnya.
+                    $row (dari Konseling::untukMonitoringKepsek()) memang tidak
+                    lagi membawa field-field tersebut — lihat Web\KepsekController::show().
+                --}}
                 <div class="detail-deskripsi" style="margin-top:16px;background:#F5F6FA;border-left-color:#8C88B8">
                     <strong>Isi konsultasi bersifat rahasia</strong>
                     <div style="margin-top:6px">

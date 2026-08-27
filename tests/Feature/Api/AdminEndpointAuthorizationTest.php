@@ -9,6 +9,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi: "endpoint akun/siswa/riwayat-kelas hanya berada di
+ * bawah auth:sanctum tanpa cek role — token siswa yang sah bisa mencapai
+ * fungsi admin". Sekarang endpoint tersebut wajib ability:admin (akun) atau
+ * ability:guru,kepsek,admin (siswa/riwayat-kelas).
+ */
 class AdminEndpointAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
@@ -49,13 +55,20 @@ class AdminEndpointAuthorizationTest extends TestCase
         Sanctum::actingAs($siswa, ['siswa']);
 
         $this->postJson('/api/siswa', [
-            'nis' => '1234567890',
+            'nis' => '1234',
             'nama' => 'Siswa Baru',
-            'kelas' => '10 IPA 1',
+            'kelas' => 'X - 1',
             'password' => 'password123',
         ])->assertForbidden();
     }
 
+    /**
+     * PERBAIKAN (revisi 24 Agustus 2026, poin 10): Guru BK sekarang BOLEH
+     * membuat master siswa lewat API (disamakan dengan jalur Web yang
+     * memang sudah lama memberi kemampuan ini), tapi tidak boleh
+     * menentukan passwordnya — dipaksa server = NIS berapa pun yang
+     * dikirim di body.
+     */
     public function test_guru_token_can_list_and_create_siswa_but_not_set_password(): void
     {
         $guru = GuruBk::factory()->create();
@@ -64,21 +77,21 @@ class AdminEndpointAuthorizationTest extends TestCase
         $this->getJson('/api/siswa')->assertOk();
 
         $this->postJson('/api/siswa', [
-            'nis' => '1234567890',
+            'nis' => '1234',
             'nama' => 'Siswa Baru',
-            'kelas' => '10 IPA 1',
+            'kelas' => 'X - 1',
             'password' => 'password123',
         ])->assertStatus(400);
 
         $this->postJson('/api/siswa', [
-            'nis' => '1234567890',
+            'nis' => '1234',
             'nama' => 'Siswa Baru',
-            'kelas' => '10 IPA 1',
+            'kelas' => 'X - 1',
         ])->assertCreated();
 
-        $siswa = Siswa::where('nis', '1234567890')->first();
+        $siswa = Siswa::where('nis', '1234')->first();
         $this->assertNotNull($siswa);
-        $this->assertTrue($siswa->verifyPassword('1234567890'));
+        $this->assertTrue($siswa->verifyPassword('1234'));
     }
 
     public function test_admin_token_can_create_siswa_with_custom_password(): void
@@ -87,13 +100,13 @@ class AdminEndpointAuthorizationTest extends TestCase
         Sanctum::actingAs($admin, ['admin']);
 
         $this->postJson('/api/siswa', [
-            'nis' => '9876543210',
+            'nis' => '9876',
             'nama' => 'Siswa Admin',
-            'kelas' => '10 IPA 1',
+            'kelas' => 'X - 1',
             'password' => 'passwordAdmin',
         ])->assertCreated();
 
-        $siswa = Siswa::where('nis', '9876543210')->first();
+        $siswa = Siswa::where('nis', '9876')->first();
         $this->assertNotNull($siswa);
         $this->assertTrue($siswa->verifyPassword('passwordAdmin'));
     }

@@ -9,6 +9,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
+/**
+ * Menutup dua poin revisi jalur web:
+ *  1) show() dulu pakai findOrFail() generik untuk role guru, sehingga
+ *     Guru A bisa lihat detail konsultasi Guru B hanya dengan ganti ID di
+ *     URL. Sekarang wajib lewat findGuruKonseling() yang di-scope guru_id.
+ *  2) destroySiswa() dulu hard-delete baris konsultasi. Sekarang diganti
+ *     soft-cancel (status=Dibatalkan) dan route DELETE sudah dihapus.
+ */
 class KonselingWebOwnershipTest extends TestCase
 {
     use RefreshDatabase;
@@ -19,6 +27,12 @@ class KonselingWebOwnershipTest extends TestCase
             'auth_role' => 'guru',
             'auth_id' => $guru->id,
             'auth_user' => ['username' => $guru->username, 'nama' => $guru->nama],
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 3): baseline
+            // password_version wajib disertakan, sama seperti yang
+            // dilakukan Web\AuthController@loginStaff saat login
+            // sungguhan — kalau tidak, RoleAuth akan menganggap password
+            // sudah berubah sejak session ini dibuat dan memaksa logout.
+            'auth_password_version' => (int) $guru->password_version,
         ]);
     }
 

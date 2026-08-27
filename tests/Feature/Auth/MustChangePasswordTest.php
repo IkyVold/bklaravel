@@ -8,18 +8,26 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup revisi 25 Agustus 2026, poin 11: "Tambahkan mekanisme pengguna
+ * wajib ganti password default setelah berhasil login". Password awal
+ * siswa selalu = NIS sendiri (lihat SiswaController@create/@importRows di
+ * Api maupun Web) — dan NIS bukan rahasia, sehingga siswa yang tidak
+ * pernah mengganti password tetap rentan diakses siapa pun yang tahu
+ * NIS-nya.
+ */
 class MustChangePasswordTest extends TestCase
 {
     use RefreshDatabase;
 
     public function test_login_siswa_dengan_password_default_mengembalikan_flag_wajib_ganti(): void
     {
-        $siswa = Siswa::factory()->create(['nis' => '1000000001', 'password' => '1000000001', 'must_change_password' => true]);
+        $siswa = Siswa::factory()->create(['nis' => '1001', 'password' => '1001', 'must_change_password' => true]);
 
         $response = $this->postJson('/api/login', [
             'role' => 'siswa',
             'nis' => $siswa->nis,
-            'password' => '1000000001',
+            'password' => '1001',
         ]);
 
         $response->assertOk();
@@ -48,6 +56,9 @@ class MustChangePasswordTest extends TestCase
         $siswa = Siswa::factory()->create(['must_change_password' => true]);
         Sanctum::actingAs($siswa, ['siswa']);
 
+        // PEMBARUAN (revisi 25 Agustus 2026, poin 13): 'current_password'
+        // sekarang wajib — factory membuat siswa dengan password default
+        // 'password' (lihat SiswaFactory).
         $this->putJson('/api/profile/' . $siswa->nis, [
             'current_password' => 'password',
             'password' => 'password_baru_pilihan_sendiri',
@@ -94,23 +105,23 @@ class MustChangePasswordTest extends TestCase
         Sanctum::actingAs($guru, ['guru']);
 
         $this->postJson('/api/siswa', [
-            'nis' => '9999999999',
+            'nis' => '9999',
             'nama' => 'Siswa Baru',
-            'kelas' => '10 IPA 1',
+            'kelas' => 'X - 1',
         ])->assertCreated();
 
-        $siswaBaru = Siswa::where('nis', '9999999999')->first();
+        $siswaBaru = Siswa::where('nis', '9999')->first();
         $this->assertTrue((bool) $siswaBaru->must_change_password);
     }
 
     public function test_login_web_siswa_dengan_password_default_diarahkan_ke_halaman_profil(): void
     {
-        $siswa = Siswa::factory()->create(['nis' => '1000000002', 'password' => '1000000002', 'must_change_password' => true]);
+        $siswa = Siswa::factory()->create(['nis' => '1002', 'password' => '1002', 'must_change_password' => true]);
 
         $response = $this->post(route('login.submit'), [
             'role' => 'siswa',
             'nis' => $siswa->nis,
-            'password' => '1000000002',
+            'password' => '1002',
         ]);
 
         $response->assertRedirect(route('siswa.profil'));
@@ -138,6 +149,58 @@ class MustChangePasswordTest extends TestCase
         ])->get(route('siswa.profil'))->assertOk();
     }
 
+    /**
+     * Menutup revisi 26 Agustus 2026, poin 4: sebelumnya RoleAuth hanya
+     * membaca must_change_password dari SNAPSHOT session ('auth_user')
+     * yang ditulis sekali saat login, bukan dari database. Kalau Admin
+     * mereset password siswa SETELAH siswa itu sudah login (session web
+     * masih hidup dengan snapshot must_change_password = false), siswa
+     * tetap bisa bebas mengakses halaman lain padahal di database
+     * must_change_password sudah true. Sekarang RoleAuth harus membaca
+     * ulang record siswa dari DB pada setiap request, persis seperti
+     * pengecekan is_active untuk Guru/Kepsek/Admin.
+     */
+    public function test_web_siswa_direset_admin_setelah_login_langsung_terkunci_walau_snapshot_session_lama_masih_false(): void
+    {
+        $siswa = Siswa::factory()->create(['must_change_password' => false]);
+
+        // Simulasikan sesi web yang sudah terlanjur login SEBELUM Admin
+        // mereset password: snapshot 'auth_user' di session masih
+        // must_change_password => false.
+        $session = [
+            'auth_role' => 'siswa',
+            'auth_id' => $siswa->id,
+            'auth_user' => ['nis' => $siswa->nis, 'nama' => $siswa->nama, 'must_change_password' => false],
+        ];
+
+        // Admin mereset password siswa SETELAH session di atas dibuat.
+        $siswa->forceFill(['must_change_password' => true])->save();
+
+        // Sesi lama (snapshot masih false) tetap harus terkunci ke halaman
+        // profil, karena nilai di DATABASE sekarang true.
+        $this->withSession($session)
+            ->get(route('siswa.dashboard'))
+            ->assertRedirect(route('siswa.profil'));
+    }
+
+    public function test_web_siswa_yang_akunnya_sudah_dihapus_dipaksa_logout(): void
+    {
+        $siswa = Siswa::factory()->create(['must_change_password' => false]);
+        $siswaId = $siswa->id;
+
+        $session = [
+            'auth_role' => 'siswa',
+            'auth_id' => $siswaId,
+            'auth_user' => ['nis' => $siswa->nis, 'nama' => $siswa->nama, 'must_change_password' => false],
+        ];
+
+        $siswa->delete();
+
+        $this->withSession($session)
+            ->get(route('siswa.dashboard'))
+            ->assertRedirect(route('login'));
+    }
+
     public function test_web_siswa_ganti_password_lewat_modal_membebaskan_dari_kewajiban(): void
     {
         $siswa = Siswa::factory()->create(['must_change_password' => true]);
@@ -148,6 +211,9 @@ class MustChangePasswordTest extends TestCase
             'auth_user' => ['nis' => $siswa->nis, 'nama' => $siswa->nama, 'must_change_password' => true],
         ])->put(route('siswa.profil.update'), [
             'edit_field' => 'password',
+            // PEMBARUAN (revisi 25 Agustus 2026, poin 13): 'current_password'
+            // sekarang wajib — factory membuat siswa dengan password
+            // default 'password' (lihat SiswaFactory).
             'current_password' => 'password',
             'edit_value' => 'password_baru_web',
             'edit_value_confirmation' => 'password_baru_web',

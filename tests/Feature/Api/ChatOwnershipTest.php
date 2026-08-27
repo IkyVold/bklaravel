@@ -10,6 +10,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi: dulu API chat menerima session_id langsung dari
+ * client (konseling_id opsional) sehingga pengguna bisa mengirim/membaca
+ * pesan di sesi milik orang lain hanya dengan menebak nama session. Sekarang
+ * konseling_id wajib dan kepemilikan/keanggotaan selalu dicek di server.
+ */
 class ChatOwnershipTest extends TestCase
 {
     use RefreshDatabase;
@@ -51,6 +57,9 @@ class ChatOwnershipTest extends TestCase
         $siswa = Siswa::factory()->create();
         $guru = GuruBk::factory()->create();
 
+        // jenis Daring + sudah dikonfirmasi: prasyarat chat sejak revisi
+        // 24 Agustus 2026 poin 4 (lihat ChatEligibilityTest untuk kasus
+        // Luring/belum dikonfirmasi).
         $row = Konseling::factory()->create([
             'siswa_id' => $siswa->id,
             'guru_id' => $guru->id,

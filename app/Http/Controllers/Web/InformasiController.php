@@ -35,6 +35,11 @@ class InformasiController extends Controller
             'isi' => 'required|string',
         ]);
         $data['guru_bk'] = Session::get('auth_user')['nama'] ?? 'Guru BK';
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 4): guru_id disimpan
+        // sebagai sumber kebenaran ownership — lihat
+        // AuthorizesBk::informasiOwnedByGuru() (dipakai jalur API;
+        // ownership check di Web mengikuti pola yang sama, lihat
+        // update()/destroy() di bawah).
         $data['guru_id'] = Session::get('auth_id');
         InformasiBk::create($data);
         return redirect()->route('guru.informasi')->with('success', 'Informasi dipublikasikan.');
@@ -50,6 +55,11 @@ class InformasiController extends Controller
     public function update(Request $request, int $id)
     {
         $row = InformasiBk::findOrFail($id);
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 4): dulu di sini tidak
+        // ada pengecekan kepemilikan sama sekali — Guru B bisa mengubah
+        // informasi yang tercatat atas nama Guru A. Route ini hanya
+        // dipasang di grup middleware role:guru, jadi role sudah
+        // dijamin; yang kurang adalah kepemilikan per-baris.
         $this->assertOwnsInformasi($row);
         $data = $request->validate([
             'judul' => 'required|string|max:150',
@@ -63,6 +73,8 @@ class InformasiController extends Controller
     public function destroy(int $id)
     {
         $row = InformasiBk::findOrFail($id);
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 4): sama seperti
+        // update() — hapus sekarang juga menegakkan kepemilikan.
         $this->assertOwnsInformasi($row);
         $row->delete();
         return redirect()->route('guru.informasi')->with('success', 'Informasi dihapus.');

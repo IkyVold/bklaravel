@@ -197,7 +197,7 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
             <form id="formTambah" method="POST" action="<?php echo e(route('guru.siswa.store')); ?>">
                 <?php echo csrf_field(); ?>
                 <label>NIS</label>
-                <input type="text" name="nis" required pattern="[0-9]+" placeholder="Hanya angka">
+                <input type="text" name="nis" required pattern="[0-9]{4}" maxlength="4" placeholder="4 digit angka">
                 <label>Nama lengkap</label>
                 <input type="text" name="nama" required>
                 <label>Kelas</label>

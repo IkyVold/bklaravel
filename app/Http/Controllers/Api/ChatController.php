@@ -31,6 +31,16 @@ class ChatController extends Controller
             return response()->json(['success' => false, 'message' => 'Konseling tidak ditemukan'], 404);
         }
 
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 2): dulu di sini dipakai
+        // assertCanViewKonseling(), yang SENGAJA meloloskan Admin & Kepsek
+        // untuk keperluan monitoring data administratif konseling.
+        // Isi chat BUKAN data administratif — ia bagian dari isi
+        // konsultasi yang menurut UI siswa hanya boleh dilihat siswa dan
+        // Guru BK yang dipilih. Akibatnya sebelumnya Admin/Kepsek yang
+        // sudah tidak bisa MENGIRIM pesan (lihat ChatController@send)
+        // tetap bisa MEMBACA seluruh riwayat chat lewat endpoint ini.
+        // assertCanReadChatKonseling() hanya meloloskan siswa pemilik dan
+        // Guru BK pemilik — sama seperti hak mengirim pesan.
         $this->assertCanReadChatKonseling($request, $konseling);
 
         if (!$konseling->chat_session_id) {
@@ -60,12 +70,29 @@ class ChatController extends Controller
             return response()->json(['success' => false, 'message' => 'Konseling tidak ditemukan'], 404);
         }
 
+        // Kepemilikan/keanggotaan sesi selalu diperiksa di server; session_id
+        // TIDAK pernah diterima langsung dari client.
+        //
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 2): sebelumnya di sini
+        // dipakai assertCanViewKonseling(), yang SENGAJA meloloskan
+        // Admin & Kepsek untuk keperluan monitoring (lihat data). Karena
+        // dipakai juga di endpoint kirim pesan, Admin/Kepsek jadi ikut
+        // bisa MENGIRIM chat konseling siswa, padahal mereka bukan
+        // peserta sesi. assertCanChatKonseling() hanya meloloskan siswa
+        // pemilik atau Guru BK pemilik.
         $this->assertCanChatKonseling($request, $konseling);
 
         if (in_array($konseling->status, ['Dibatalkan', 'Ditolak'], true)) {
             return response()->json(['success' => false, 'message' => 'Konseling sudah dibatalkan'], 403);
         }
 
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 4): sebelumnya hanya
+        // status Dibatalkan/Ditolak yang diperiksa, sehingga chat bisa
+        // dipakai walau konsultasi belum dikonfirmasi Guru BK (status
+        // 'Menunggu') atau untuk konsultasi Luring (tatap muka langsung,
+        // yang seharusnya tidak butuh chat online). Dua aturan tambahan
+        // berikut menutup celah itu. Urutan pesan error sengaja spesifik
+        // per aturan supaya klien tahu persis alasan penolakan.
         if (!$konseling->isDaring()) {
             return response()->json([
                 'success' => false,

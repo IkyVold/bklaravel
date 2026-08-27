@@ -10,6 +10,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi 24 Agustus 2026 #4: "API chat dapat digunakan sebelum
+ * konsultasi dikonfirmasi atau untuk konsultasi Luring". Sebelumnya
+ * ChatController@send hanya menolak status Dibatalkan/Ditolak, sehingga
+ * siswa bisa mulai chat walau status masih 'Menunggu' (belum dikonfirmasi
+ * Guru BK) atau jenis konsultasinya 'Luring' (tatap muka langsung).
+ * Sekarang keduanya wajib: jenis = Daring DAN status_konfirmasi termasuk
+ * dalam Konseling::STATUS_KONFIRMASI_TERKONFIRMASI.
+ */
 class ChatEligibilityTest extends TestCase
 {
     use RefreshDatabase;

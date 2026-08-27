@@ -177,10 +177,19 @@
                 </svg>
             </button>
         </div>
+        {{-- PERBAIKAN (revisi 27 Agustus 2026, poin 5): disclosure jujur
+             bahwa chatbot ini memakai layanan AI pihak ketiga, bukan
+             Guru BK, dan bukan saluran untuk cerita yang sangat pribadi.
+             Ditaruh SELALU tampil di atas area pesan (bukan sekali lalu
+             disembunyikan) supaya terlihat setiap kali panel dibuka,
+             sebelum siswa mulai mengetik. --}}
+        <div class="ai-chat-disclosure">
+            🔒 Chatbot ini menggunakan layanan AI pihak ketiga (bukan Guru BK) untuk memproses jawaban. Hindari mencantumkan nama lengkap, alamat, atau informasi sangat pribadi lainnya. Untuk konsultasi pribadi, gunakan layanan konsultasi langsung dengan Guru BK.
+        </div>
         <div class="ai-chat-messages" id="faqMessages">
             <div class="ai-chat-msg bot">
                 <div class="ai-msg-avatar">?</div>
-                <div class="ai-msg-bubble">Halo! 👋 Saya asisten konseling AI. Ada yang ingin kamu tanyakan atau ceritakan?</div>
+                <div class="ai-msg-bubble">Halo! 👋 Saya asisten FAQ BK. Ada pertanyaan seputar prosedur konseling, jadwal, atau info sekolah?</div>
             </div>
         </div>
         <div class="ai-chat-input-area">
@@ -191,7 +200,7 @@
                 </svg>
             </button>
         </div>
-        <div class="ai-chat-footer-note">Jawaban otomatis — untuk masalah serius hubungi Guru BK</div>
+        <div class="ai-chat-footer-note">Jawaban otomatis oleh AI pihak ketiga — untuk masalah serius/pribadi hubungi Guru BK langsung</div>
     </div>
 </div>
 @endsection

@@ -10,6 +10,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 24 Agustus 2026, poin 11): Api/KonselingController
+ * dulu membuat notifikasi dengan 'data' => json_encode([...]) padahal
+ * kolom 'data' pada model Notifikasi sudah di-cast 'array'. Mengirim
+ * string JSON ke attribute yang sudah di-cast array berisiko
+ * double-encoding — $notifikasi->data['konseling_id'] tidak lagi
+ * mengembalikan nilai yang benar. Test ini memastikan konfirmasi() dan
+ * updateStatus() sekarang menyimpan 'data' sebagai array asli (lewat
+ * Notifikasi::buatUntuk()), bukan string JSON.
+ */
 class NotifikasiDataCastTest extends TestCase
 {
     use RefreshDatabase;

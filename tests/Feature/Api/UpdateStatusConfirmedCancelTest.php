@@ -9,6 +9,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 25 Agustus 2026, poin 5): dulu PUT
+ * /api/konseling/{id}/status tidak memeriksa status_konfirmasi sama
+ * sekali, sehingga konsultasi yang sudah dikonfirmasi (status=Proses,
+ * status_konfirmasi=Dikonfirmasi/Terkonfirmasi/Tervalidasi) masih bisa
+ * diubah menjadi Dibatalkan lewat API — padahal jalur web
+ * (Web/KonselingController@batalGuru) sudah menolaknya. Test ini
+ * memastikan endpoint API sekarang menegakkan aturan yang sama.
+ */
 class UpdateStatusConfirmedCancelTest extends TestCase
 {
     use RefreshDatabase;
@@ -72,7 +81,15 @@ class UpdateStatusConfirmedCancelTest extends TestCase
         $this->assertSame('Dibatalkan', $row->fresh()->status);
     }
 
-    public function test_admin_juga_tidak_bisa_membatalkan_konseling_yang_sudah_dikonfirmasi(): void
+    /**
+     * PERBAIKAN (revisi 26 Agustus 2026, poin 1): dulu Admin lolos
+     * assertGuruCanManageKonseling() dan baru ditolak di aturan bisnis
+     * (400, "sudah dikonfirmasi tidak bisa dibatalkan"). Sekarang Admin
+     * ditolak lebih awal di lapisan otorisasi (403) karena Admin memang
+     * tidak lagi berwenang mengelola konsultasi sama sekali — bukan cuma
+     * tidak boleh membatalkan yang sudah dikonfirmasi.
+     */
+    public function test_admin_tidak_bisa_mengelola_status_konseling_sama_sekali(): void
     {
         [$row] = $this->buatKonselingProses('Terkonfirmasi');
 
@@ -82,7 +99,7 @@ class UpdateStatusConfirmedCancelTest extends TestCase
         $this->putJson("/api/konseling/{$row->id}/status", [
             'status' => 'Dibatalkan',
             'alasan_batal' => 'Coba lewat admin',
-        ])->assertStatus(400);
+        ])->assertForbidden();
 
         $this->assertSame('Proses', $row->fresh()->status);
     }

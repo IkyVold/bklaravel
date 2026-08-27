@@ -10,6 +10,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi 26 Agustus 2026 #6 untuk jalur API — lihat
+ * Tests\Feature\Web\LaporanStatusPenangananValidationTest untuk konteks
+ * lengkap. laporan_status_penanganan di sini nullable (laporan bisa
+ * diedit tanpa mengirim field ini), tapi kalau dikirim wajib salah satu
+ * dari StatusPenanganan::ALL.
+ */
 class LaporanStatusPenangananValidationTest extends TestCase
 {
     use RefreshDatabase;

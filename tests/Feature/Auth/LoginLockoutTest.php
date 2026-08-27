@@ -6,6 +6,11 @@ use App\Models\Siswa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi: dulu locked_until hanya dicek di Api\AuthController,
+ * sehingga akun yang "terkunci" lewat API masih bisa dicoba lewat web.
+ * Sekarang AuthenticationService dipakai bersama oleh kedua jalur.
+ */
 class LoginLockoutTest extends TestCase
 {
     use RefreshDatabase;

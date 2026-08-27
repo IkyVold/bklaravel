@@ -10,6 +10,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 25 Agustus 2026, poin 6): KonselingReportService dulu
+ * hanya mewajibkan & membuat sesi lanjutan saat laporan PERTAMA
+ * (!$hasLaporan). Kalau laporan awal berstatus Selesai lalu diedit
+ * (dalam window 72 jam) menjadi Monitoring, validasi wajib sesi lanjutan
+ * tidak berjalan dan sesi lanjutan juga tidak dibuat — bisa terbentuk
+ * status_penanganan=Monitoring tanpa sesi lanjutan sama sekali. Sekarang
+ * yang dicek adalah "apakah konseling ini sudah punya sesi lanjutan
+ * (child)", bukan "apakah ini laporan pertama".
+ */
 class LaporanMonitoringEditTest extends TestCase
 {
     use RefreshDatabase;
@@ -112,6 +122,11 @@ class LaporanMonitoringEditTest extends TestCase
         $this->assertSame(1, Konseling::where('pengajuan_sebelumnya_id', $row->id)->count());
     }
 
+    /**
+     * PERBAIKAN (revisi 26 Agustus 2026, poin 7): edit laporan yang tidak
+     * mengirim laporan_catatan_tambahan dulu menimpa catatan lama dengan
+     * '-'. Sekarang harus mempertahankan nilai lama.
+     */
     public function test_edit_laporan_tanpa_kirim_catatan_tidak_menghapus_catatan_lama(): void
     {
         [$row, $guru] = $this->buatKonselingSiapLaporan();

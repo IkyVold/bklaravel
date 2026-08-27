@@ -12,6 +12,22 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi 24 Agustus 2026 #2 & #3: "Kepala Sekolah/Admin dapat
+ * masuk dan mengirim pesan pada chat konseling" — sebelumnya ChatController
+ * @send memakai assertCanViewKonseling() (yang sengaja meloloskan admin &
+ * kepsek untuk monitoring) sebagai gerbang kirim pesan juga, dan pesan yang
+ * terkirim dari admin/kepsek dicatat seolah-olah dari 'guru'. Sekarang kirim
+ * pesan memakai assertCanChatKonseling(), yang hanya meloloskan siswa
+ * pemilik dan Guru BK pemilik.
+ *
+ * Juga menutup poin revisi 25 Agustus 2026 #2: "Kepala Sekolah dan Admin
+ * masih dapat membaca isi chat konsultasi" — history() sebelumnya masih
+ * memakai assertCanViewKonseling() sehingga walau admin/kepsek sudah tidak
+ * bisa MENGIRIM pesan, mereka tetap bisa MEMBACA seluruh isi chat. Sekarang
+ * history() memakai assertCanReadChatKonseling(), aturan yang sama dengan
+ * hak mengirim pesan (hanya siswa pemilik & Guru BK pemilik).
+ */
 class ChatSenderAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
@@ -20,6 +36,10 @@ class ChatSenderAuthorizationTest extends TestCase
     {
         $siswa = Siswa::factory()->create();
         $guru = GuruBk::factory()->create();
+        // jenis Daring + sudah dikonfirmasi: prasyarat chat sejak revisi
+        // 24 Agustus 2026 poin 4, supaya kasus-kasus di file ini murni
+        // menguji otorisasi pengirim (bukan ikut tersandung aturan
+        // kelayakan chat yang diuji terpisah di ChatEligibilityTest).
         $row = Konseling::factory()->create([
             'siswa_id' => $siswa->id,
             'guru_id' => $guru->id,
@@ -64,6 +84,17 @@ class ChatSenderAuthorizationTest extends TestCase
 
     public function test_admin_tidak_bisa_membaca_history_chat_konseling(): void
     {
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 2): dulu test ini
+        // menegaskan sebaliknya (admin/kepsek "tetap bisa melihat history
+        // untuk monitoring") karena history() memakai
+        // assertCanViewKonseling() yang sengaja meloloskan admin/kepsek.
+        // Isi chat ternyata bagian dari isi konsultasi yang menurut UI
+        // siswa hanya boleh dilihat siswa & Guru BK yang dipilih — jadi
+        // sekarang history() memakai assertCanReadChatKonseling(), yang
+        // hanya meloloskan siswa pemilik dan Guru BK pemilik. Hak MELIHAT
+        // data administratif konseling (jadwal/status, lewat
+        // assertCanViewKonseling()) tetap ada; yang dicabut khusus akses
+        // ke ISI CHAT.
         [$row] = $this->buatKonseling();
 
         $admin = Admin::factory()->create();

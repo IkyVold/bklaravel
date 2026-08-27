@@ -198,7 +198,7 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
             <form id="formTambah" method="POST" action="{{ route('guru.siswa.store') }}">
                 @csrf
                 <label>NIS</label>
-                <input type="text" name="nis" required pattern="[0-9]+" placeholder="Hanya angka">
+                <input type="text" name="nis" required pattern="[0-9]{4}" maxlength="4" placeholder="4 digit angka">
                 <label>Nama lengkap</label>
                 <input type="text" name="nama" required>
                 <label>Kelas</label>
@@ -372,6 +372,16 @@ nav[role="navigation"] svg { width: 16px !important; height: 16px !important; ma
           var row = document.createElement('div');
           row.className = 'absen-map-row';
 
+          // PERBAIKAN (revisi 26 Agustus 2026, poin 5): sec.label dan
+          // sec.sheet berasal dari isi file Excel yang di-upload (nama
+          // sheet/label kelas). Sebelumnya nilai ini langsung dirakit ke
+          // dalam string HTML lalu di-assign ke row.innerHTML, sehingga
+          // file Excel yang dibuat khusus (label kelas berisi markup
+          // HTML/script) bisa dieksekusi di browser Guru BK saat preview
+          // ditampilkan (DOM XSS). Sekarang seluruh bagian yang berasal
+          // dari file — label, jumlah siswa, nama sheet — dibuat lewat
+          // createElement + textContent, bukan innerHTML, sehingga nilai
+          // apa pun dari file selalu diperlakukan sebagai teks biasa.
           var info = document.createElement('div');
           info.style.flex = '1';
           var strong = document.createElement('strong');

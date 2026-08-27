@@ -11,6 +11,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi 25 Agustus 2026 #3: "Admin masih dapat membaca
+ * seluruh narasi konsultasi". Sebelumnya getDetail()/listAll()/listBySiswa()
+ * hanya menyaring field isi konsultasi (deskripsi, laporan_kesimpulan,
+ * laporan_rekomendasi, laporan_catatan_tambahan) untuk Kepsek lewat
+ * Konseling::untukMonitoringKepsek() — Admin dikecualikan dan tetap
+ * menerima $row utuh. Sekarang Admin disaring dengan cara yang sama persis
+ * dengan Kepsek di ketiga endpoint tsb. Guru BK pemilik & siswa pemilik
+ * tidak terpengaruh — mereka tetap menerima data lengkap.
+ */
 class KonselingAdminSanitizationTest extends TestCase
 {
     use RefreshDatabase;
@@ -86,6 +96,9 @@ class KonselingAdminSanitizationTest extends TestCase
 
     public function test_kepsek_tetap_disaring_sama_seperti_sebelumnya(): void
     {
+        // Regression guard: pastikan perubahan poin 3 tidak sengaja
+        // melonggarkan aturan Kepsek yang sudah benar sejak revisi
+        // sebelumnya.
         [$row] = $this->buatKonselingDenganLaporan();
 
         $kepsek = Kepsek::factory()->create();

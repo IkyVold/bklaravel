@@ -51,9 +51,16 @@ class AuthController extends Controller
 
     private function loginSiswa(Request $request)
     {
-        $request->validate(['nis' => 'required|string']);
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 8): dulu cuma
+        // 'string' — halaman login sudah menjanjikan "NIS harus 4 digit
+        // angka" tapi backend menerima string apa pun. Sekarang
+        // diseragamkan dengan aturan NIS di seluruh sistem.
+        $request->validate(['nis' => 'required|digits:4']);
         $nis = $request->input('nis');
 
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 2): limiter global per-IP
+        // dicek lebih dulu — identik dengan jalur API — supaya satu IP
+        // tidak bisa lolos batas percobaan hanya dengan mengganti-ganti NIS.
         $ipKey = $this->auth->ipThrottleKey($request);
         if ($this->auth->tooManyIpAttempts($ipKey)) {
             $seconds = $this->auth->ipAvailableIn($ipKey);
@@ -114,6 +121,9 @@ class AuthController extends Controller
             'nama' => $siswa->nama,
             'kelas' => $siswa->kelas,
             'foto' => $siswa->foto_profile,
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): disimpan di
+            // session supaya RoleAuth middleware bisa memeriksanya tanpa
+            // query DB tambahan di setiap request.
             'must_change_password' => (bool) $siswa->must_change_password,
         ]);
         Session::regenerate();
@@ -136,6 +146,8 @@ class AuthController extends Controller
             return back()->withInput()->withErrors(['login' => "Tabel {$table} belum ada."]);
         }
 
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 2): limiter global per-IP
+        // dicek lebih dulu, sama seperti loginSiswa() dan jalur API.
         $ipKey = $this->auth->ipThrottleKey($request);
         if ($this->auth->tooManyIpAttempts($ipKey)) {
             $seconds = $this->auth->ipAvailableIn($ipKey);
@@ -181,6 +193,17 @@ class AuthController extends Controller
         Session::put('auth_role', $role);
         Session::put('auth_id', $user->id);
         Session::put('auth_user', $extra);
+        // PERBAIKAN (revisi 26 Agustus 2026, poin 3): simpan
+        // password_version saat ini sebagai baseline session. Dibaca
+        // $user->password_version SETELAH verifyPassword() di atas
+        // selesai (termasuk kemungkinan upgrade hash lama md5->bcrypt,
+        // yang ikut menaikkan versi ini), supaya baseline yang tersimpan
+        // selalu mencerminkan state password yang PALING BARU saat login
+        // ini terjadi — bukan state sebelum request ini. RoleAuth
+        // membandingkan ulang nilai ini ke database pada setiap request;
+        // kalau sudah tidak cocok berarti password diganti setelah
+        // session ini dibuat, dan session langsung dipaksa logout.
+        Session::put('auth_password_version', (int) $user->password_version);
         Session::regenerate();
 
         return redirect()->route($this->homeRoute($role));

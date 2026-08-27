@@ -66,7 +66,7 @@
                             id="nis"
                             name="nis"
                             inputmode="numeric"
-                            maxlength="10"
+                            maxlength="4"
                             placeholder="Masukan NIS (4 digit angka)"
                             value="{{ old('nis') }}"
                             autocomplete="username"

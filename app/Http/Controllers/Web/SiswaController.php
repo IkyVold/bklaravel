@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\Konseling;
 use App\Models\Siswa;
+use App\Support\MasterKelas;
 use App\Support\SimpleXlsx;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,11 +13,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SiswaController extends Controller
 {
-    public const VALID_KELAS = [
-        'X - 1', 'X - 2', 'X - 3', 'X - 4', 'X - 5', 'X - 6', 'X - 7', 'X - 8', 'X - 9', 'X - 10',
-        'XI - 1', 'XI - 2', 'XI - 3', 'XI - 4', 'XI - 5', 'XI - 6', 'XI - 7', 'XI - 8', 'XI - 9', 'XI - 10',
-        'XII - 1', 'XII - 2', 'XII - 3', 'XII - 4', 'XII - 5', 'XII - 6', 'XII - 7', 'XII - 8', 'XII - 9', 'XII - 10',
-    ];
+    // PERBAIKAN (revisi 27 Agustus 2026, poin 9): daftar kelas dipindahkan
+    // ke App\Support\MasterKelas supaya Web, API, dan import memakai satu
+    // sumber kebenaran yang sama. Lihat MasterKelas::LIST untuk daftarnya
+    // dan alasan lengkap perubahan ini.
 
     public function index(Request $request)
     {
@@ -59,7 +59,7 @@ class SiswaController extends Controller
             'kelas' => $request->query('kelas', ''),
             'jk' => $request->query('jk', ''),
             'q' => $request->query('q', ''),
-            'kelasOptions' => self::VALID_KELAS,
+            'kelasOptions' => MasterKelas::LIST,
         ]);
     }
 
@@ -70,16 +70,36 @@ class SiswaController extends Controller
 
     public function store(Request $request)
     {
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' SENGAJA
+        // dihapus dari rules. Dulu Guru BK bisa mengisi password custom
+        // saat menambah siswa baru lewat form ini — sekarang password
+        // SELALU di-set = NIS saat pembuatan, sama seperti jalur
+        // import (upsertSiswa()). Guru BK tidak lagi bisa menentukan atau
+        // mengubah password siswa lewat rute mana pun di bawah role:guru;
+        // reset password siswa hanya lewat Admin atau siswa itu sendiri
+        // (lihat Api/ProfileController, poin 1).
         $data = $request->validate([
-            'nis' => 'required|string|max:20|unique:siswa,nis',
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 8): dulu
+            // 'string|max:20' — tidak konsisten dengan API (max:10) dan
+            // halaman login (yang sudah menjanjikan "4 digit angka").
+            // Diputuskan NIS = NIS lokal sekolah, tepat 4 digit angka.
+            'nis' => 'required|digits:4|unique:siswa,nis',
             'nama' => 'required|string|max:100',
             'kelas' => 'required|string|max:20',
             'jenis_kelamin' => 'nullable|in:Laki-laki,Perempuan',
         ]);
-        if (!in_array($data['kelas'], self::VALID_KELAS, true)) {
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 9): kelas diperiksa
+        // terhadap MasterKelas::LIST (dulu VALID_KELAS lokal). Sebelum
+        // perbaikan ini kode pengecekannya hilang/terputus (hanya
+        // menyisakan `return back()...; }` tanpa `if` pembukanya), yang
+        // membuat store() tidak pernah bisa dieksekusi sampai selesai.
+        if (!MasterKelas::isValid($data['kelas'])) {
             return back()->withInput()->withErrors(['kelas' => 'Kelas tidak valid']);
         }
         $data['password'] = $data['nis'];
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): password awal siswa
+        // di jalur ini selalu = NIS dan ditentukan Guru BK, bukan siswa
+        // sendiri — wajib diganti saat login pertama.
         $data['must_change_password'] = true;
         $data['jenis_kelamin'] = $this->normalizeJk($data['jenis_kelamin'] ?? null);
         Siswa::create($data);
@@ -99,12 +119,29 @@ class SiswaController extends Controller
     public function update(Request $request, int $id)
     {
         $siswa = Siswa::findOrFail($id);
+        // PERBAIKAN (revisi 24 Agustus 2026, poin 10): 'password' SENGAJA
+        // dihapus dari rules — sebelumnya Guru BK bisa reset password
+        // siswa mana pun lewat form edit data master ini, celah yang
+        // sama persis dengan yang sudah ditutup di Api/ProfileController
+        // (poin 1). Guru BK di sini hanya boleh mengubah data
+        // administratif (nama/NIS/kelas/jenis kelamin), tidak pernah
+        // password.
         $data = $request->validate([
-            'nis' => 'required|string|max:20|unique:siswa,nis,' . $id,
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 8): lihat catatan
+            // lengkap di store() — diseragamkan jadi tepat 4 digit angka.
+            'nis' => 'required|digits:4|unique:siswa,nis,' . $id,
             'nama' => 'required|string|max:100',
             'kelas' => 'required|string|max:20',
             'jenis_kelamin' => 'nullable|in:Laki-laki,Perempuan',
         ]);
+        // PERBAIKAN (revisi 27 Agustus 2026, poin 9): update() sebelumnya
+        // tidak pernah memeriksa kelas terhadap master kelas sama sekali
+        // (berbeda dengan store(), yang seharusnya sudah memeriksa).
+        // Sekarang disamakan: kelas juga diperiksa terhadap
+        // MasterKelas::LIST saat mengedit data siswa.
+        if (!MasterKelas::isValid($data['kelas'])) {
+            return back()->withInput()->withErrors(['kelas' => 'Kelas tidak valid']);
+        }
         $data['jenis_kelamin'] = $this->normalizeJk($data['jenis_kelamin'] ?? null);
         $siswa->update($data);
         return redirect()->route('guru.siswa.index')->with('success', 'Data siswa diperbarui.');
@@ -167,15 +204,19 @@ class SiswaController extends Controller
             if ($nis === '' && $nama === '') {
                 continue;
             }
-            if ($nis === '' || !preg_match('/^[0-9]+$/', $nis)) {
-                $skipped[] = ['row' => $r + 1, 'reason' => 'NIS kosong atau bukan angka'];
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 8): dulu regex hanya
+            // mengecek "seluruhnya angka" tanpa batas panjang — NIS 3
+            // digit atau 15 digit tetap lolos, tidak konsisten dengan
+            // aturan tepat 4 digit di create()/update()/login.
+            if ($nis === '' || !preg_match('/^[0-9]{4}$/', $nis)) {
+                $skipped[] = ['row' => $r + 1, 'reason' => 'NIS kosong atau bukan tepat 4 digit angka'];
                 continue;
             }
             if ($nama === '') {
                 $skipped[] = ['row' => $r + 1, 'reason' => 'Nama kosong'];
                 continue;
             }
-            if (!in_array($kelas, self::VALID_KELAS, true)) {
+            if (!MasterKelas::isValid($kelas)) {
                 $skipped[] = ['row' => $r + 1, 'reason' => 'Kelas "' . $kelas . '" tidak valid'];
                 continue;
             }
@@ -275,15 +316,18 @@ class SiswaController extends Controller
             $nama = trim((string) ($r['nama'] ?? ''));
             $kelas = trim((string) ($r['kelas'] ?? ''));
             $jk = $r['jenis_kelamin'] ?? $r['jk'] ?? null;
-            if ($nis === '' || !preg_match('/^[0-9]+$/', $nis)) {
-                $skipped[] = ['row' => $i + 1, 'reason' => "NIS \"{$nis}\" tidak valid"];
+            // PERBAIKAN (revisi 26 Agustus 2026, poin 8): sama seperti
+            // jalur import CSV/manual di atas — panjang NIS harus tepat
+            // 4 digit, bukan cuma "seluruhnya angka".
+            if ($nis === '' || !preg_match('/^[0-9]{4}$/', $nis)) {
+                $skipped[] = ['row' => $i + 1, 'reason' => "NIS \"{$nis}\" harus tepat 4 digit angka"];
                 continue;
             }
             if ($nama === '') {
                 $skipped[] = ['row' => $i + 1, 'reason' => "Nama kosong (NIS {$nis})"];
                 continue;
             }
-            if (!in_array($kelas, self::VALID_KELAS, true)) {
+            if (!MasterKelas::isValid($kelas)) {
                 $skipped[] = ['row' => $i + 1, 'reason' => "Kelas \"{$kelas}\" tidak valid"];
                 continue;
             }
@@ -383,6 +427,9 @@ class SiswaController extends Controller
             'kelas' => $kelas,
             'jenis_kelamin' => $jk,
             'password' => $nis,
+            // PERBAIKAN (revisi 25 Agustus 2026, poin 11): sama seperti
+            // store() di atas — password default = NIS wajib diganti saat
+            // login pertama.
             'must_change_password' => true,
         ]);
         return 'inserted';

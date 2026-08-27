@@ -425,6 +425,23 @@
         .beranda-page .ai-chat-close:hover { background: rgba(255,255,255,0.28); }
         .beranda-page .ai-chat-close svg { width: 13px; height: 13px; }
 
+        /* PERBAIKAN (revisi 27 Agustus 2026, poin 5): sebelumnya panel
+           chatbot AI tidak pernah menjelaskan ke siswa bahwa isi obrolan
+           dikirim ke layanan AI pihak ketiga (Groq) untuk diproses.
+           Disclosure ini SENGAJA dibuat selalu tampil (bukan sekali lalu
+           disembunyikan lewat localStorage) setiap panel dibuka, supaya
+           siswa selalu diingatkan sebelum mengetik cerita apa pun — bukan
+           hanya sekali di awal yang mudah terlewat/terlupakan. */
+        .beranda-page .ai-chat-disclosure {
+            padding: 10px 14px;
+            font-size: 11.5px;
+            line-height: 1.5;
+            color: #7a5b12;
+            background: #FEF6E6;
+            border-bottom: 0.5px solid #f0dfae;
+            flex-shrink: 0;
+        }
+
         .beranda-page .ai-chat-messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; max-height: 300px; background: #faf9f7; }
         .beranda-page .ai-chat-msg { display: flex; align-items: flex-end; gap: 8px; }
         .beranda-page .ai-chat-msg.user { flex-direction: row-reverse; }

@@ -189,6 +189,16 @@
     </main>
 
     {{-- Modal edit field --}}
+    {{-- PERBAIKAN: sebelumnya modal ini diletakkan SETELAH penutup
+         </div> dari .profile-page, sehingga bukan lagi keturunan
+         .profile-page. Seluruh CSS modal (display:none, .show,
+         positioning, z-index) di-scope sebagai ".profile-page .modal",
+         jadi tidak pernah kena ke elemen ini — modal tidak pernah
+         ter-hide dan class "show" yang ditoggle lewat JS tidak
+         berefek apa pun secara visual. Akibatnya klik tombol "Edit"
+         terasa seperti tidak merespons. Modal dipindah ke dalam
+         .profile-page supaya CSS scoped-nya berlaku, sama seperti pola
+         di halaman guru/kepsek (.guru-bk-page .modal, .kepsek-page .modal). --}}
     <div class="modal" id="editModal">
     <div class="modal-content">
         <div class="modal-header">
@@ -221,6 +231,12 @@
                     <input type="text" name="edit_value" id="inputTelepon" maxlength="30">
                 </div>
                 <div class="modal-field" id="fieldPassword" style="display:none">
+                    {{-- PERBAIKAN (revisi 25 Agustus 2026, poin 13): tambah
+                         input password saat ini sebelum siswa bisa
+                         mengganti password. Tanpa ini, siapa pun yang
+                         berhasil mengambil alih session siswa bisa langsung
+                         mengganti password dan mengunci pemilik asli dari
+                         akunnya sendiri. --}}
                     <label>Password Saat Ini</label>
                     <input type="password" name="current_password" id="inputCurrentPassword" autocomplete="current-password">
                     <label style="margin-top:10px;display:block">Password Baru</label>
@@ -280,6 +296,10 @@
         tanggal_lahir: [document.getElementById('inputTanggal')],
         alamat: [document.getElementById('inputAlamat')],
         no_telepon: [document.getElementById('inputTelepon')],
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 13): inputCurrentPassword
+        // ditambahkan di sini juga, supaya ikut logika enable/disable +
+        // name yang sama seperti input lain — kalau bukan field password
+        // yang aktif, atribut name-nya dilepas agar tidak ikut terkirim.
         password: [document.getElementById('inputCurrentPassword'), document.getElementById('inputPassword'), document.getElementById('inputPasswordConfirm')]
     };
     var inputNames = {
@@ -329,6 +349,9 @@
     });
 
     @if($mustChangePassword ?? false)
+        // PERBAIKAN (revisi 25 Agustus 2026, poin 11): buka langsung modal
+        // ganti password supaya siswa tidak perlu mencari-cari tombol Edit
+        // saat wajib mengganti password default.
         openModal('password', 'Password', '');
     @endif
 })();

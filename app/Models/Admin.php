@@ -18,7 +18,7 @@ class Admin extends Authenticatable
 
     protected $hidden = ['password'];
 
-    protected $casts = ['is_active' => 'boolean'];
+    protected $casts = ['is_active' => 'boolean', 'password_changed_at' => 'datetime', 'password_version' => 'integer'];
 
     public function getAuthIdentifierName(): string
     {
@@ -38,6 +38,10 @@ class Admin extends Authenticatable
         return false;
     }
 
+    /**
+     * PERBAIKAN (revisi 26 Agustus 2026, poin 3): lihat penjelasan di
+     * GuruBk::setPasswordAttribute() — pola dan alasannya identik.
+     */
     public function setPasswordAttribute($value): void
     {
         if ($value === null || $value === '') {
@@ -48,5 +52,6 @@ class Admin extends Authenticatable
         } else {
             $this->attributes['password'] = $value;
         }
+        $this->attributes['password_changed_at'] = now();
     }
 }

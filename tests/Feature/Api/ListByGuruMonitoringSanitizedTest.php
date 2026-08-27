@@ -10,6 +10,17 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * PERBAIKAN (revisi 26 Agustus 2026, poin 1): listByGuru() (endpoint
+ * /api/konseling-bk) dulu hanya memfilter query berdasarkan Guru BK saat
+ * pemanggilnya berrole guru. Kalau yang login Admin atau Kepsek, filter
+ * dilewati sepenuhnya dan seluruh baris (termasuk isi konsultasi mentah:
+ * deskripsi, kesimpulan, rekomendasi, catatan) dikembalikan apa adanya —
+ * padahal /konseling-all, /konseling/{nis}, dan /konseling/detail/{id}
+ * sudah membatasi Admin/Kepsek hanya menerima data administratif lewat
+ * Konseling::untukMonitoringKepsek(). Endpoint ini adalah jalan pintas
+ * untuk melewati pembatasan privasi tersebut.
+ */
 class ListByGuruMonitoringSanitizedTest extends TestCase
 {
     use RefreshDatabase;

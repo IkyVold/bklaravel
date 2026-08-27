@@ -9,6 +9,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * Menutup poin revisi 26 Agustus 2026 #4: "Guru BK dapat mengubah atau
+ * menghapus informasi milik Guru BK lain". InformasiController::update()
+ * dan remove() dulu hanya memeriksa bahwa pengguna adalah Guru/Admin,
+ * bukan bahwa informasi tersebut dibuat oleh Guru yang sama. Sekarang
+ * guru_id disimpan sebagai sumber kebenaran ownership dan ditegakkan
+ * lewat AuthorizesBk::assertGuruCanManageInformasi().
+ */
 class InformasiOwnershipTest extends TestCase
 {
     use RefreshDatabase;
